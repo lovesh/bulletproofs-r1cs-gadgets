@@ -19,6 +19,8 @@ clear_on_drop = "0.2"
 
 [dependencies.bulletproofs]
 path = "../bulletproofs"
+#git = "https://github.com/dalek-cryptography/bulletproofs"
+#branch = "develop"
 features = ["yoloproofs", "avx2_backend"]
 
 [dev-dependencies]

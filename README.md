@@ -8,7 +8,8 @@ This repo contains several examples that show how various statements can be repr
 3. [Prove value is not equal to a given value](src/gadget_not_equals.rs)
 4. Proof of set membership, 2 implementations [1](src/gadget_set_membership.rs), [2](src/gadget_set_membership_1.rs)
 5. [Proof of set non-membership](src/gadget_set_non_membership.rs)
-6. [Proof of knowledge of leaf in a sparse merkle tree](src/gadget_vsmt.rs)
+6. [Proof knowledge of preimage given image of MiMC hash function](src/gadget_mimc.rs)
+7. [Proof of knowledge of leaf in a sparse merkle tree](src/gadget_vsmt.rs)
 
 ## Building
 This project uses a slightly modified implementation of Bulletproofs's `develop` branch. The difference is addition of the method `num_constraints` to `Prover` to return the number of constraints.   
