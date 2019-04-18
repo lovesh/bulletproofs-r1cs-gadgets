@@ -54,28 +54,12 @@ impl<'a> VanillaSparseMerkleTree<'a> {
     }
 
     pub fn update(&mut self, idx: Scalar, val: Scalar) -> Scalar {
-        let mut sidenodes: Vec<Scalar> = vec![];
-        let mut cur_node = self.root.clone();
-        //let mut cur_idx = get_bit_array(&idx);
-        let mut cur_idx = ScalarBits::from_scalar(&idx);
 
+        // Find path to insert the new key
+        let mut sidenodes_wrap = Some(Vec::<Scalar>::new());
+        self.get(idx, &mut sidenodes_wrap);
+        let mut sidenodes: Vec<Scalar> = sidenodes_wrap.unwrap();
 
-        for i in 0..self.depth {
-            let k = cur_node.to_bytes();
-            let v = self.db.get(&k).unwrap();
-
-            if cur_idx.is_msb_set() {
-                sidenodes.push(v.0);
-                cur_node = v.1;
-            } else {
-                sidenodes.push(v.1);
-                cur_node = v.0;
-            }
-
-            cur_idx.shl();
-        }
-
-        //cur_idx = get_bit_array(&idx);
         let mut cur_idx = ScalarBits::from_scalar(&idx);
         let mut cur_val = val.clone();
 
@@ -83,13 +67,15 @@ impl<'a> VanillaSparseMerkleTree<'a> {
             let side_elem = sidenodes.pop().unwrap();
             let new_val = {
                 if cur_idx.is_lsb_set() {
-                    let nv =  mimc(&side_elem, &cur_val, self.hash_constants);
-                    self.update_db_with_key_val(nv, (side_elem, cur_val));
-                    nv
+                    // LSB is set, so put new value on right
+                    let h =  mimc(&side_elem, &cur_val, self.hash_constants);
+                    self.update_db_with_key_val(h, (side_elem, cur_val));
+                    h
                 } else {
-                    let nv =  mimc(&cur_val, &side_elem, self.hash_constants);
-                    self.update_db_with_key_val(nv, (cur_val, side_elem));
-                    nv
+                    // LSB is unset, so put new value on left
+                    let h =  mimc(&cur_val, &side_elem, self.hash_constants);
+                    self.update_db_with_key_val(h, (cur_val, side_elem));
+                    h
                 }
             };
             //println!("Root at level {} is {:?}", i, &cur_val);
@@ -102,6 +88,7 @@ impl<'a> VanillaSparseMerkleTree<'a> {
         cur_val
     }
 
+    /// Get a value from tree, if `proof` is not None, populate `proof` with the merkle proof
     pub fn get(&self, idx: Scalar, proof: &mut Option<Vec<Scalar>>) -> Scalar {
         let mut cur_idx = ScalarBits::from_scalar(&idx);
         let mut cur_node = self.root.clone();
@@ -113,13 +100,14 @@ impl<'a> VanillaSparseMerkleTree<'a> {
             let k = cur_node.to_bytes();
             let v = self.db.get(&k).unwrap();
             if cur_idx.is_msb_set() {
+                // MSB is set, traverse to right subtree
                 cur_node = v.1;
                 if need_proof { proof_vec.push(v.0); }
             } else {
+                // MSB is unset, traverse to left subtree
                 cur_node = v.0;
                 if need_proof { proof_vec.push(v.1); }
             }
-            //cur_idx.shl(1);
             cur_idx.shl();
         }
 
@@ -133,6 +121,7 @@ impl<'a> VanillaSparseMerkleTree<'a> {
         cur_node
     }
 
+    /// Verify a merkle proof, if `root` is None, use the current root else use given root
     pub fn verify_proof(&self, idx: Scalar, val: Scalar, proof: &[Scalar], root: Option<&Scalar>) -> bool {
         let mut cur_idx = ScalarBits::from_scalar(&idx);
         let mut cur_val = val.clone();

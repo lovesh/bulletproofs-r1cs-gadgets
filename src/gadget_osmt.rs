@@ -175,17 +175,18 @@ impl<'a> OptmzSparseMerkleTree<'a> {
             let new_root = self.get_subtree_with_one_val(path, &val, depth);
             self.update_db(&new_root,
                            //(Some(true), Scalar::from_repr(path).unwrap(), val));
-                           //(Some(true), path.to_scalar(), val));
-                           (Some(true), path.to_non_reduced_scalar(), val));
+                           (Some(true), path.to_scalar(), val));
+                           //(Some(true), path.to_non_reduced_scalar(), val));
             return new_root
         }
 
         //println!("_update with depth {}", &depth);
         let child = self.get_from_db(&root).clone();
         if child.0.is_some() {
+            //let x = ScalarBits::from_scalar(&child.1);
             return self.update_one_val_subtree(path, val.clone(),
-                                               //&ScalarBits::from_scalar(&child.1), child.2.clone(), depth)
-                                               &ScalarBits::from_scalar_dont_reduce(&child.1), child.2.clone(), depth)
+                                               &ScalarBits::from_scalar(&child.1), child.2.clone(), depth)
+                                               //&ScalarBits::from_scalar_dont_reduce(&child.1), child.2.clone(), depth)
         } else {
             let mut new_path = path.clone();
             new_path.shl();
@@ -231,10 +232,10 @@ impl<'a> OptmzSparseMerkleTree<'a> {
                     let left_subtree_hash = self.get_subtree_with_one_val(&next_old_path, &val_for_old_key, depth+1);
                     println!("Calling get_subtree_with_one_val with depth {} key-val {:?}={:?}", depth+1, debug_next_new_path, scalar_to_u64_array(&val_for_new_key));
                     let right_subtree_hash = self.get_subtree_with_one_val(&next_new_path, &val_for_new_key, depth+1);
-                    //self.update_db(&left_subtree_hash, (Some(true), next_old_path.to_scalar(), val_for_old_key));
-                    self.update_db(&left_subtree_hash, (Some(true), next_old_path.to_non_reduced_scalar(), val_for_old_key));
-                    //self.update_db(&right_subtree_hash, (Some(true), next_new_path.to_scalar(), val_for_new_key));
-                    self.update_db(&right_subtree_hash, (Some(true), next_new_path.to_non_reduced_scalar(), val_for_new_key));
+                    self.update_db(&left_subtree_hash, (Some(true), next_old_path.to_scalar(), val_for_old_key));
+                    //self.update_db(&left_subtree_hash, (Some(true), next_old_path.to_non_reduced_scalar(), val_for_old_key));
+                    self.update_db(&right_subtree_hash, (Some(true), next_new_path.to_scalar(), val_for_new_key));
+                    //self.update_db(&right_subtree_hash, (Some(true), next_new_path.to_non_reduced_scalar(), val_for_new_key));
                     (left_subtree_hash, right_subtree_hash)
                 }
             } else {
@@ -243,10 +244,10 @@ impl<'a> OptmzSparseMerkleTree<'a> {
                     let left_subtree_hash = self.get_subtree_with_one_val(&next_new_path, &val_for_new_key, depth+1);
                     println!("Calling get_subtree_with_one_val with depth {} key-val {:?}={:?}", depth+1, debug_next_old_path, scalar_to_u64_array(&val_for_old_key));
                     let right_subtree_hash = self.get_subtree_with_one_val(&next_old_path, &val_for_old_key, depth+1);
-                    //self.update_db(&left_subtree_hash, (Some(true), next_new_path.to_scalar(), val_for_new_key));
-                    self.update_db(&left_subtree_hash, (Some(true), next_new_path.to_non_reduced_scalar(), val_for_new_key));
-                    //self.update_db(&right_subtree_hash, (Some(true), next_old_path.to_scalar(), val_for_old_key));
-                    self.update_db(&right_subtree_hash, (Some(true), next_old_path.to_non_reduced_scalar(), val_for_old_key));
+                    self.update_db(&left_subtree_hash, (Some(true), next_new_path.to_scalar(), val_for_new_key));
+                    //self.update_db(&left_subtree_hash, (Some(true), next_new_path.to_non_reduced_scalar(), val_for_new_key));
+                    self.update_db(&right_subtree_hash, (Some(true), next_old_path.to_scalar(), val_for_old_key));
+                    //self.update_db(&right_subtree_hash, (Some(true), next_old_path.to_non_reduced_scalar(), val_for_old_key));
                     (left_subtree_hash, right_subtree_hash)
                 } else {
                     (self.update_one_val_subtree(&next_new_path, val_for_new_key,
@@ -336,8 +337,8 @@ mod tests {
             assert!(tree.verify_proof(s, s, &proof_vec, &tree.root));
         }
 
-        let kvs: Vec<(Scalar, Scalar)> = (0..10).map(|_| (Scalar::random(&mut test_rng), Scalar::random(&mut test_rng))).collect();
-        //let kvs: Vec<(Scalar, Scalar)> = vec![(Scalar::from(7227u32), Scalar::from(7227u32)), (Scalar::from(7700u32), Scalar::from(7700u32))];
+        //let kvs: Vec<(Scalar, Scalar)> = (0..10).map(|_| (Scalar::random(&mut test_rng), Scalar::random(&mut test_rng))).collect();
+        let kvs: Vec<(Scalar, Scalar)> = vec![(Scalar::from(7227u32), Scalar::from(7227u32)), (Scalar::from(7700u32), Scalar::from(7700u32))];
         for i in 0..kvs.len() {
             println!("Setting {:?}={:?}", scalar_to_u64_array(&kvs[i].0), scalar_to_u64_array(&kvs[i].1));
             tree.update(kvs[i].0, kvs[i].1);

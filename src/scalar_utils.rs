@@ -94,6 +94,7 @@ impl ScalarBits {
         Scalar::from_bits(bytes)
     }
 
+    /// Shift left by 1 bit
     pub fn shl(&mut self) {
         for i in (1..TreeDepth).rev() {
             self.bit_array[i] = self.bit_array[i-1];
@@ -101,6 +102,7 @@ impl ScalarBits {
         self.bit_array[0] = 0;
     }
 
+    /// Shift right by 1 bit
     pub fn shr(&mut self) {
         for i in 1..TreeDepth {
             self.bit_array[i-1] = self.bit_array[i];
@@ -108,6 +110,7 @@ impl ScalarBits {
         self.bit_array[TreeDepth-1] = 0;
     }
 
+    /// Return a new bit-array shifted to the left with 1 bit
     pub fn new_left_shifted(&self) -> Self {
         // Not using the above method `shl` to avoid copying
         let mut new_array = [0; TreeDepth];
@@ -120,6 +123,7 @@ impl ScalarBits {
         }
     }
 
+    /// Return a new bit-array shifted to the right with 1 bit
     pub fn new_right_shifted(&self) -> Self {
         // Not using the above method `shr` to avoid copying
         let mut new_array = [0; TreeDepth];
@@ -132,10 +136,12 @@ impl ScalarBits {
         }
     }
 
+    /// Check if most significant bit is set
     pub fn is_msb_set(&self) -> bool {
         self.bit_array[TreeDepth-1] == 1
     }
 
+    /// Check if least significant bit is set
     pub fn is_lsb_set(&self) -> bool {
         self.bit_array[0] == 1
     }
