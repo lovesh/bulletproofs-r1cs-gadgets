@@ -17,4 +17,4 @@ This project uses a slightly modified implementation of Bulletproofs's `develop`
 1. `evaluate_lc`: to evaluate an linear constraint 
 2. `allocate_single`: to return output variable when allocating right multiplier.
 To build clone official [Bulletproofs](https://github.com/dalek-cryptography/bulletproofs) at the same level as this directory and use the nightly compiler to run tests like   
-`cargo +nightly test`
+`cargo +nightly test --all-features`
