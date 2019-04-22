@@ -18,9 +18,9 @@ merlin = "1"
 clear_on_drop = "0.2"
 
 [dependencies.bulletproofs]
-path = "../bulletproofs"
-#git = "https://github.com/dalek-cryptography/bulletproofs"
-#branch = "develop"
+#path = "../bulletproofs"
+git = "https://github.com/lovesh/bulletproofs"
+branch = "smt"
 features = ["yoloproofs", "avx2_backend"]
 
 [dev-dependencies]

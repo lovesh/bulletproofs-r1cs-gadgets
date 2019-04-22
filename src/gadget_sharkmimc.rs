@@ -10,7 +10,7 @@ use merlin::Transcript;
 use bulletproofs::r1cs::LinearCombination;
 
 use crate::r1cs_utils::{AllocatedScalar, constrain_lc_with_scalar};
-use serde::de::Unexpected::Str;
+use crate::gadget_zero_nonzero::is_nonzero_gadget;
 
 
 pub struct SharkMiMCParams {
@@ -177,7 +177,7 @@ fn synthesize_sbox<CS: ConstraintSystem>(
 ) -> Result<Variable, R1CSError> {
     match sbox_type {
         SboxType::Cube => synthesize_cube_sbox(cs, input_var, round_key),
-        //SboxType::Inverse => synthesize_inverse_sbox(cs, input_var, round_key)
+        SboxType::Inverse => synthesize_inverse_sbox(cs, input_var, round_key),
         _ => Err(R1CSError::GadgetError {description: String::from("inverse not implemented")})
     }
 }
@@ -188,7 +188,6 @@ fn synthesize_cube_sbox<CS: ConstraintSystem>(
     input_var: LinearCombination,
     round_key: Scalar
 ) -> Result<Variable, R1CSError> {
-    //let const_lc: LinearCombination = vec![(Variable::One(), round_key)].iter().collect();
     let inp_plus_const: LinearCombination = input_var + round_key;
     let (i, _, sqr) = cs.multiply(inp_plus_const.clone(), inp_plus_const);
     let (_, _, cube) = cs.multiply(sqr.into(), i.into());
@@ -196,31 +195,39 @@ fn synthesize_cube_sbox<CS: ConstraintSystem>(
 }
 
 // Allocate variables in circuit and enforce constraints when Sbox as inverse
-/*fn synthesize_inverse_sbox<CS: ConstraintSystem>(
+fn synthesize_inverse_sbox<CS: ConstraintSystem>(
     cs: &mut CS,
-    input_var: Variable,
+    input_var: LinearCombination,
     round_key: Scalar
-) -> Result<Variable, SynthesisError> {
-    let mut tmp = input_val.map(|mut t| {
-        t.add_assign(&round_key);
-        t
-    });;
+) -> Result<Variable, R1CSError> {
+    let inp_plus_const: LinearCombination = input_var + round_key;
 
-    let mut inverse_val = tmp.map(| t| {
-        apply_inverse_sbox::<E>(&t)
+    let val_l = cs.evaluate_lc(&inp_plus_const);
+    let val_r = val_l.map(|l| {
+        l.invert()
     });
-    let mut inverse = cs.alloc(|| "inverse", || {
-        inverse_val.ok_or(SynthesisError::AssignmentMissing)
-    })?;
-    cs.enforce(
-        || "inverse constraint (x * x^-1 = 1)",
-        |lc| lc + input_var + (round_key, CS::one()),
-        |lc| lc + inverse,
-        |lc| lc + CS::one()
-    );
 
-    Ok(inverse_val)
-}*/
+    let (var_l, _) = cs.allocate_single(val_l)?;
+    let (var_r, var_o) = cs.allocate_single(val_r)?;
+
+    // Ensure `inp_plus_const` is not zero
+    is_nonzero_gadget(
+        cs,
+        AllocatedScalar {
+            variable: var_l,
+            assignment: val_l
+        },
+        AllocatedScalar {
+            variable: var_r,
+            assignment: val_r
+        }
+    )?;
+
+    // Constrain product of ``inp_plus_const` and its inverse to be 1.
+    constrain_lc_with_scalar::<CS>(cs, var_o.unwrap().into(), &Scalar::one());
+
+    Ok(var_r)
+}
 
 fn apply_linear_layer(
     num_branches: usize,
@@ -427,6 +434,73 @@ mod tests {
                                  allocs,
                                  &s_params,
                                  &SboxType::Cube,
+                                 &expected_output).is_ok());
+
+        assert!(verifier.verify(&proof, &pc_gens, &bp_gens).is_ok());
+    }
+
+    #[test]
+    fn test_sharkmimc_inverse_sbox() {
+        let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
+        let num_branches = 4;
+        let middle_rounds = 6;
+        let s_params = SharkMiMCParams::new(num_branches, middle_rounds);
+        let total_rounds = s_params.total_rounds;
+
+        let pc_gens = PedersenGens::default();
+        let bp_gens = BulletproofGens::new(2048, 1);
+
+        let input = vec![Scalar::from(1u32), Scalar::from(2u32), Scalar::from(3u32), Scalar::from(4u32)];
+        let expected_output = SharkMiMC(&input, &s_params, &apply_inverse_sbox);
+
+        println!("Input:\n");
+        println!("{:?}", &input);
+        println!("Expected output:\n");
+        println!("{:?}", &expected_output);
+
+        println!("Proving");
+        let (proof, commitments) = {
+            let mut prover_transcript = Transcript::new(b"SharkMiMC");
+            let mut prover = Prover::new(&pc_gens, &mut prover_transcript);
+
+            let mut comms = vec![];
+            let mut allocs = vec![];
+
+            for i in 0..num_branches {
+                let (com, var) = prover.commit(input[i].clone(), Scalar::random(&mut test_rng));
+                comms.push(com);
+                allocs.push(AllocatedScalar {
+                    variable: var,
+                    assignment: Some(input[i]),
+                });
+            }
+
+            assert!(sharkmimc_gadget(&mut prover,
+                                     allocs,
+                                     &s_params,
+                                     &SboxType::Inverse,
+                                     &expected_output).is_ok());
+
+            let proof = prover.prove(&bp_gens).unwrap();
+            (proof, comms)
+        };
+
+        println!("Verifying");
+
+        let mut verifier_transcript = Transcript::new(b"SharkMiMC");
+        let mut verifier = Verifier::new(&mut verifier_transcript);
+        let mut allocs = vec![];
+        for i in 0..num_branches {
+            let v = verifier.commit(commitments[i]);
+            allocs.push(AllocatedScalar {
+                variable: v,
+                assignment: None,
+            });
+        }
+        assert!(sharkmimc_gadget(&mut verifier,
+                                 allocs,
+                                 &s_params,
+                                 &SboxType::Inverse,
                                  &expected_output).is_ok());
 
         assert!(verifier.verify(&proof, &pc_gens, &bp_gens).is_ok());

@@ -10,9 +10,11 @@ This repo contains several examples that show how various statements can be repr
 5. [Proof of set non-membership](src/gadget_set_non_membership.rs)
 6. [Proof knowledge of preimage given image of MiMC hash function](src/gadget_mimc.rs)
 7. [Proof of knowledge of leaf in a sparse merkle tree](src/gadget_vsmt.rs)
-8. [Proof knowledge of output given input of Sharkmimc permutation](src/gadget_sharkmimc.rs)
+8. [Proof of knowledge of output, given input of Sharkmimc permutation](src/gadget_sharkmimc.rs). 2 kinds of S-boxes, cube and inverse.
 
 ## Building
-This project uses a slightly modified implementation of Bulletproofs's `develop` branch. The difference is addition of the method `num_constraints` to `Prover` to return the number of constraints.   
+This project uses a slightly modified implementation of Bulletproofs's `develop` branch. The difference is addition of the method `num_constraints` to `Prover` to return the number of constraints, fixing of [minor bug that results in compilation error](https://github.com/dalek-cryptography/bulletproofs/pull/267) and addition of 2 new methods in constraint system   
+1. `evaluate_lc`: to evaluate an linear constraint 
+2. `allocate_single`: to return output variable when allocating right multiplier.
 To build clone official [Bulletproofs](https://github.com/dalek-cryptography/bulletproofs) at the same level as this directory and use the nightly compiler to run tests like   
 `cargo +nightly test`
