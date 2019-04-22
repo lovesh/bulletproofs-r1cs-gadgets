@@ -410,9 +410,7 @@ mod tests {
             let mut prover_transcript = Transcript::new(b"VSMT");
             let mut prover = Prover::new(&pc_gens, &mut prover_transcript);
 
-            let mut rng = rand::thread_rng();
-
-            let (com_leaf, var_leaf) = prover.commit(k, Scalar::random(&mut rng));
+            let (com_leaf, var_leaf) = prover.commit(k, Scalar::random(&mut test_rng));
             let mut leaf_alloc_scalar = AllocatedScalar {
                 variable: var_leaf,
                 assignment: Some(k),
@@ -423,7 +421,7 @@ mod tests {
             let mut leaf_index_alloc_scalars = vec![];
             for b in get_bits(&k).iter().take(tree.depth) {
                 let val: Scalar = Scalar::from(*b as u8);
-                let (c, v) = prover.commit(val.clone(), Scalar::random(&mut rng));
+                let (c, v) = prover.commit(val.clone(), Scalar::random(&mut test_rng));
                 leaf_index_comms.push(c);
                 leaf_index_vars.push(v);
                 leaf_index_alloc_scalars.push(AllocatedScalar {
@@ -436,7 +434,7 @@ mod tests {
             let mut proof_vars = vec![];
             let mut proof_alloc_scalars = vec![];
             for p in proof_vec.iter().rev() {
-                let (c, v) = prover.commit(*p, Scalar::random(&mut rng));
+                let (c, v) = prover.commit(*p, Scalar::random(&mut test_rng));
                 proof_comms.push(c);
                 proof_vars.push(v);
                 proof_alloc_scalars.push(AllocatedScalar {

@@ -4,8 +4,10 @@ extern crate curve25519_dalek;
 
 use rand::SeedableRng;
 use rand::rngs::OsRng;
+use self::byteorder::{ByteOrder, LittleEndian};
 use curve25519_dalek::scalar::Scalar;
 use std::fmt;
+
 pub type ScalarBytes = [u8; 32];
 
 pub const TreeDepth: usize = 253;
@@ -159,7 +161,6 @@ pub fn get_bits(scalar: &Scalar) -> [i8; 256] {
 }
 
 pub fn scalar_to_u64_array(scalar: &Scalar) -> [u64; 4] {
-    use self::byteorder::{ByteOrder, LittleEndian};
     let bytes = scalar.to_bytes();
     let mut result = [0; 4];
     LittleEndian::read_u64_into(&bytes, &mut result);
@@ -167,7 +168,6 @@ pub fn scalar_to_u64_array(scalar: &Scalar) -> [u64; 4] {
 }
 
 pub fn u64_array_to_scalar(array: &[u64; 4]) -> Scalar {
-    use self::byteorder::{ByteOrder, LittleEndian};
     let mut result: [u8; 32] = [0; 32];
     LittleEndian::write_u64_into(array, &mut result);
     let s = Scalar::from_bits(result);
@@ -187,6 +187,7 @@ mod tests {
             let r: Scalar = Scalar::random(&mut csprng);
             let mut b_arr = ScalarBits::from_scalar(&r);
             assert_eq!(r, b_arr.to_scalar());
+            //assert_eq!(b_arr, ScalarBits::from_scalar(&b_arr.to_scalar()));
         }
 
         /*let mut one = ScalarBitArray::from_scalar(&Scalar::one());

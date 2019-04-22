@@ -4,7 +4,8 @@ use bulletproofs::{BulletproofGens, PedersenGens};
 use curve25519_dalek::ristretto::CompressedRistretto;
 use bulletproofs::r1cs::LinearCombination;
 
-use crate::r1cs_utils::{AllocatedScalar, is_nonzero_gadget, constrain_lc_with_scalar};
+use crate::r1cs_utils::{AllocatedScalar, constrain_lc_with_scalar};
+use crate::gadget_zero_nonzero::is_nonzero_gadget;
 
 // Ensure `v` is not equal to expected
 pub fn not_equals_gadget<CS: ConstraintSystem>(

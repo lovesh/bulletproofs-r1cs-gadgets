@@ -14,3 +14,4 @@ pub mod gadget_zero_nonzero;
 pub mod gadget_mimc;
 pub mod gadget_vsmt;
 pub mod gadget_osmt;
+pub mod gadget_sharkmimc;

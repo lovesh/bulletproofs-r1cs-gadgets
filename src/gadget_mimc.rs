@@ -10,7 +10,6 @@ use bulletproofs::{BulletproofGens, PedersenGens};
 use merlin::Transcript;
 use bulletproofs::r1cs::LinearCombination;
 
-
 use crate::r1cs_utils::{AllocatedScalar,constrain_lc_with_scalar};
 
 //pub const MIMC_ROUNDS: usize = 322;
@@ -114,10 +113,9 @@ mod tests {
                 let mut prover_transcript = Transcript::new(b"MiMC");
                 let mut prover = Prover::new(&pc_gens, &mut prover_transcript);
 
-                let mut rng = rand::thread_rng();
 
-                let (com_l, var_l) = prover.commit(xl, Scalar::random(&mut rng));
-                let (com_r, var_r) = prover.commit(xr, Scalar::random(&mut rng));
+                let (com_l, var_l) = prover.commit(xl, Scalar::random(&mut test_rng));
+                let (com_r, var_r) = prover.commit(xr, Scalar::random(&mut test_rng));
 
                 let mut left_alloc_scalar = AllocatedScalar {
                     variable: var_l,

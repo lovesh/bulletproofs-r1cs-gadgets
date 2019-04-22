@@ -10,6 +10,7 @@ This repo contains several examples that show how various statements can be repr
 5. [Proof of set non-membership](src/gadget_set_non_membership.rs)
 6. [Proof knowledge of preimage given image of MiMC hash function](src/gadget_mimc.rs)
 7. [Proof of knowledge of leaf in a sparse merkle tree](src/gadget_vsmt.rs)
+8. [Proof knowledge of output given input of Sharkmimc permutation](src/gadget_sharkmimc.rs)
 
 ## Building
 This project uses a slightly modified implementation of Bulletproofs's `develop` branch. The difference is addition of the method `num_constraints` to `Prover` to return the number of constraints.   

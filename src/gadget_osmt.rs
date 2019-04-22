@@ -14,6 +14,7 @@ use bulletproofs::r1cs::LinearCombination;
 use crate::scalar_utils::{ScalarBytes, TreeDepth, ScalarBits, get_bits, scalar_to_u64_array};
 use crate::r1cs_utils::AllocatedScalar;
 use crate::gadget_mimc::{mimc, MIMC_ROUNDS};
+use curve25519_dalek::constants::BASEPOINT_ORDER;
 
 
 type DBVal = (Option<bool>, Scalar, Scalar);
@@ -73,7 +74,8 @@ impl<'a> OptmzSparseMerkleTree<'a> {
             let v = self.get_from_db(&cur_node);
             if need_proof { proof_vec.push(v.clone()); }
 
-            let debug_cur_idx = scalar_to_u64_array(&cur_idx.to_scalar());
+            let debug_cur_idx_scalar = cur_idx.to_scalar();
+            let debug_cur_idx = scalar_to_u64_array(&debug_cur_idx_scalar);
             println!("Loop: {} cur_idx {:?}", i, debug_cur_idx);
 //            println!("Loop: cur_idx reduced {:?}", &reduce_field_repr_to_elem::<E>(cur_idx));
             let debug_cur_node = scalar_to_u64_array(&cur_node);
@@ -99,6 +101,7 @@ impl<'a> OptmzSparseMerkleTree<'a> {
                 }
             }
 
+            let new_x = ScalarBits::from_scalar(&debug_cur_idx_scalar);
             if cur_idx.is_msb_set() {
                 cur_node = v.2;
             } else {
@@ -207,8 +210,10 @@ impl<'a> OptmzSparseMerkleTree<'a> {
     fn update_one_val_subtree(&mut self, path_for_new_key: &ScalarBits,
                               val_for_new_key: Scalar, path_for_old_key: &ScalarBits,
                               val_for_old_key: Scalar, depth: usize) -> Scalar {
-        let debug_path_for_new_key = scalar_to_u64_array(&path_for_new_key.to_scalar());
-        let debug_path_for_old_key = scalar_to_u64_array(&path_for_old_key.to_scalar());
+        let new_path_scalar = path_for_new_key.to_scalar();
+        let old_path_scalar = path_for_old_key.to_scalar();
+        let debug_path_for_new_key = scalar_to_u64_array(&new_path_scalar);
+        let debug_path_for_old_key = scalar_to_u64_array(&old_path_scalar);
         println!("Called update_one_val_subtree with new key-val {:?}={:?}", debug_path_for_new_key, scalar_to_u64_array(&val_for_new_key));
         println!("Called update_one_val_subtree with old key-val {:?}={:?}", debug_path_for_old_key, scalar_to_u64_array(&val_for_old_key));
         if depth == self.depth {
