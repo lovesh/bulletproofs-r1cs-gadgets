@@ -50,6 +50,5 @@ pub fn positive_no_gadget<CS: ConstraintSystem>(
 
 /// Constrain a linear combination to be equal to a scalar
 pub fn constrain_lc_with_scalar<CS: ConstraintSystem>(cs: &mut CS, lc: LinearCombination, scalar: &Scalar) {
-    let scalar_lc: LinearCombination = vec![(Variable::One(), *scalar)].iter().collect();
-    cs.constrain(lc - scalar_lc);
+    cs.constrain(lc - LinearCombination::from(*scalar));
 }
