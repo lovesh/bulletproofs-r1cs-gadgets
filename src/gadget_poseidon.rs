@@ -54,141 +54,30 @@ impl PoseidonParams {
     }
 }
 
-fn Poseidon_permutation(
-    input: &[Scalar],
-    params: &PoseidonParams,
-    apply_sbox: &Fn(&Scalar) -> Scalar
-) -> Vec<Scalar>
-{
-    let width = params.width;
-    assert_eq!(input.len(), width);
-
-    let full_rounds_beginning = params.full_rounds_beginning;
-    let partial_rounds = params.partial_rounds;
-    let full_rounds_end = params.full_rounds_end;
-
-    let mut current_state = input.to_owned();
-    let mut current_state_temp = vec![Scalar::zero(); width];
-
-    let mut round_keys_offset = 0;
-
-    // full Sbox rounds
-    for _ in 0..full_rounds_beginning {
-        // Sbox layer
-        for i in 0..width {
-            current_state[i] += params.round_keys[round_keys_offset];
-            current_state[i] = apply_sbox(&current_state[i]);
-            round_keys_offset += 1;
-        }
-
-        // linear layer
-        for j in 0..width {
-            for i in 0..width {
-                current_state_temp[i] += current_state[j] * params.MDS_matrix[i][j];
-            }
-        }
-
-        // Output of this round becomes input to next round
-        for i in 0..width {
-            current_state[i] = current_state_temp[i];
-            current_state_temp[i] = Scalar::zero();
-        }
-    }
-
-    // middle partial Sbox rounds
-    for _ in full_rounds_beginning..(full_rounds_beginning+partial_rounds) {
-        for i in 0..width {
-            current_state[i] += &params.round_keys[round_keys_offset];
-            round_keys_offset += 1;
-        }
-
-        // partial Sbox layer, apply Sbox to only 1 element of the state.
-        // Here the last one is chosen but the choice is arbitrary.
-        current_state[width-1] = apply_sbox(&current_state[width-1]);
-
-        // linear layer
-        for j in 0..width {
-            for i in 0..width {
-                current_state_temp[i] += current_state[j] * params.MDS_matrix[i][j];
-            }
-        }
-
-        // Output of this round becomes input to next round
-        for i in 0..width {
-            current_state[i] = current_state_temp[i];
-            current_state_temp[i] = Scalar::zero();
-        }
-    }
-
-    // last full Sbox rounds
-    for _ in full_rounds_beginning+partial_rounds..(full_rounds_beginning+partial_rounds+full_rounds_end) {
-        // Sbox layer
-        for i in 0..width {
-            current_state[i] += params.round_keys[round_keys_offset];
-            current_state[i] = apply_sbox(&current_state[i]);
-            round_keys_offset += 1;
-        }
-
-        // linear layer
-        for j in 0..width {
-            for i in 0..width {
-                current_state_temp[i] += current_state[j] * params.MDS_matrix[i][j];
-            }
-        }
-
-        // Output of this round becomes input to next round
-        for i in 0..width {
-            current_state[i] = current_state_temp[i];
-            current_state_temp[i] = Scalar::zero();
-        }
-    }
-
-    // Finally the current_state becomes the output
-    current_state
-}
-
-/// 2:1 (2 inputs, 1 output) hash from the permutation by passing the first input as zero, 2 of the next 4 as non-zero and rest zero. Choose one of the outputs.
-pub fn Poseidon_hash_2(xl: Scalar, xr: Scalar, params: &PoseidonParams, apply_sbox: &Fn(&Scalar) -> Scalar) -> Scalar {
-    // Only 2 inputs to the permutation are set to the input of this hash function, rest are 0. Always keep the 1st input as 0
-
-    let input = vec![
-        Scalar::zero(),
-        xl,
-        xr,
-        Scalar::zero(),
-        Scalar::zero(),
-        Scalar::zero()
-    ];
-
-    // Never take the first input
-    Poseidon_permutation(&input, params, apply_sbox)[1]
-}
-
-fn apply_cube_sbox(elem: &Scalar) -> Scalar
-{
-    (elem * elem) * elem
-}
-
-fn apply_inverse_sbox(elem: &Scalar) -> Scalar
-{
-    elem.invert()
-}
-
 pub enum SboxType {
     Cube,
     Inverse
 }
 
-fn synthesize_sbox<CS: ConstraintSystem>(
-    cs: &mut CS,
-    input_var: LinearCombination,
-    round_key: Scalar,
-    sbox_type: &SboxType
-) -> Result<Variable, R1CSError> {
-    match sbox_type {
-        SboxType::Cube => synthesize_cube_sbox(cs, input_var, round_key),
-        SboxType::Inverse => synthesize_inverse_sbox(cs, input_var, round_key),
-        _ => Err(R1CSError::GadgetError {description: String::from("inverse not implemented")})
+impl SboxType {
+    fn apply_sbox(&self, elem: &Scalar) -> Scalar {
+        match self {
+            SboxType::Cube => (elem * elem) * elem,
+            SboxType::Inverse => elem.invert()
+        }
+    }
+
+    fn synthesize_sbox<CS: ConstraintSystem>(
+        &self,
+        cs: &mut CS,
+        input_var: LinearCombination,
+        round_key: Scalar
+    ) -> Result<Variable, R1CSError> {
+        match self {
+            SboxType::Cube => synthesize_cube_sbox(cs, input_var, round_key),
+            SboxType::Inverse => synthesize_inverse_sbox(cs, input_var, round_key),
+            _ => Err(R1CSError::GadgetError {description: String::from("inverse not implemented")})
+        }
     }
 }
 
@@ -239,6 +128,116 @@ fn synthesize_inverse_sbox<CS: ConstraintSystem>(
     Ok(var_r)
 }
 
+fn Poseidon_permutation(
+    input: &[Scalar],
+    params: &PoseidonParams,
+    sbox: &SboxType
+) -> Vec<Scalar>
+{
+    let width = params.width;
+    assert_eq!(input.len(), width);
+
+    let full_rounds_beginning = params.full_rounds_beginning;
+    let partial_rounds = params.partial_rounds;
+    let full_rounds_end = params.full_rounds_end;
+
+    let mut current_state = input.to_owned();
+    let mut current_state_temp = vec![Scalar::zero(); width];
+
+    let mut round_keys_offset = 0;
+
+    // full Sbox rounds
+    for _ in 0..full_rounds_beginning {
+        // Sbox layer
+        for i in 0..width {
+            current_state[i] += params.round_keys[round_keys_offset];
+            current_state[i] = sbox.apply_sbox(&current_state[i]);
+            round_keys_offset += 1;
+        }
+
+        // linear layer
+        for j in 0..width {
+            for i in 0..width {
+                current_state_temp[i] += current_state[j] * params.MDS_matrix[i][j];
+            }
+        }
+
+        // Output of this round becomes input to next round
+        for i in 0..width {
+            current_state[i] = current_state_temp[i];
+            current_state_temp[i] = Scalar::zero();
+        }
+    }
+
+    // middle partial Sbox rounds
+    for _ in full_rounds_beginning..(full_rounds_beginning+partial_rounds) {
+        for i in 0..width {
+            current_state[i] += &params.round_keys[round_keys_offset];
+            round_keys_offset += 1;
+        }
+
+        // partial Sbox layer, apply Sbox to only 1 element of the state.
+        // Here the last one is chosen but the choice is arbitrary.
+        current_state[width-1] = sbox.apply_sbox(&current_state[width-1]);
+
+        // linear layer
+        for j in 0..width {
+            for i in 0..width {
+                current_state_temp[i] += current_state[j] * params.MDS_matrix[i][j];
+            }
+        }
+
+        // Output of this round becomes input to next round
+        for i in 0..width {
+            current_state[i] = current_state_temp[i];
+            current_state_temp[i] = Scalar::zero();
+        }
+    }
+
+    // last full Sbox rounds
+    for _ in full_rounds_beginning+partial_rounds..(full_rounds_beginning+partial_rounds+full_rounds_end) {
+        // Sbox layer
+        for i in 0..width {
+            current_state[i] += params.round_keys[round_keys_offset];
+            current_state[i] = sbox.apply_sbox(&current_state[i]);
+            round_keys_offset += 1;
+        }
+
+        // linear layer
+        for j in 0..width {
+            for i in 0..width {
+                current_state_temp[i] += current_state[j] * params.MDS_matrix[i][j];
+            }
+        }
+
+        // Output of this round becomes input to next round
+        for i in 0..width {
+            current_state[i] = current_state_temp[i];
+            current_state_temp[i] = Scalar::zero();
+        }
+    }
+
+    // Finally the current_state becomes the output
+    current_state
+}
+
+/// 2:1 (2 inputs, 1 output) hash from the permutation by passing the first input as zero, 2 of the next 4 as non-zero and rest zero. Choose one of the outputs.
+pub fn Poseidon_hash_2(xl: Scalar, xr: Scalar, params: &PoseidonParams, sbox: &SboxType) -> Scalar {
+    // Only 2 inputs to the permutation are set to the input of this hash function, rest are 0. Always keep the 1st input as 0
+
+    let input = vec![
+        Scalar::zero(),
+        xl,
+        xr,
+        Scalar::zero(),
+        Scalar::zero(),
+        Scalar::zero()
+    ];
+
+    // Never take the first input
+    Poseidon_permutation(&input, params, sbox)[1]
+}
+
 fn apply_linear_layer(
     width: usize,
     sbox_outs: Vec<LinearCombination>,
@@ -277,7 +276,7 @@ pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
         // Substitution (S-box) layer
         for i in 0..width {
             let round_key = params.round_keys[round_keys_offset];
-            sbox_outputs[i] = synthesize_sbox(cs, input_vars[i].clone(), round_key.clone(), sbox_type)?.into();
+            sbox_outputs[i] = sbox_type.synthesize_sbox(cs, input_vars[i].clone(), round_key.clone())?.into();
 
             round_keys_offset += 1;
         }
@@ -305,7 +304,7 @@ pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
             // apply Sbox to only 1 element of the state.
             // Here the last one is chosen but the choice is arbitrary.
             if i == width-1 {
-                sbox_outputs[i] = synthesize_sbox(cs, input_vars[i].clone(), round_key.clone(), sbox_type)?.into();
+                sbox_outputs[i] = sbox_type.synthesize_sbox(cs, input_vars[i].clone(), round_key.clone())?.into();
             } else {
                 sbox_outputs[i] = input_vars[i].clone() + LinearCombination::from(round_key);
             }
@@ -334,7 +333,7 @@ pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
         // Substitution (S-box) layer
         for i in 0..width {
             let round_key = params.round_keys[round_keys_offset];
-            sbox_outputs[i] = synthesize_sbox(cs, input_vars[i].clone(), round_key.clone(), sbox_type)?.into();
+            sbox_outputs[i] = sbox_type.synthesize_sbox(cs, input_vars[i].clone(), round_key.clone())?.into();
 
             round_keys_offset += 1;
         }
@@ -426,7 +425,7 @@ mod tests {
     use rand::SeedableRng;
     use super::rand::rngs::StdRng;
 
-    fn poseidon_perm(apply_sbox: &Fn(&Scalar) -> Scalar, sbox_type: &SboxType, transcript_label: &'static [u8]) {
+    fn poseidon_perm(sbox_type: &SboxType, transcript_label: &'static [u8]) {
         let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
         let width = 6;
         let (full_b, full_e) = (4, 4);
@@ -435,7 +434,7 @@ mod tests {
         let total_rounds = full_b + full_e + partial_rounds;
 
         let input = (0..width).map(|_| Scalar::random(&mut test_rng)).collect::<Vec<_>>();
-        let expected_output = Poseidon_permutation(&input, &s_params, apply_sbox);
+        let expected_output = Poseidon_permutation(&input, &s_params, sbox_type);
 
         println!("Input:\n");
         println!("{:?}", &input);
@@ -493,7 +492,7 @@ mod tests {
         assert!(verifier.verify(&proof, &pc_gens, &bp_gens).is_ok());
     }
 
-    fn poseidon_hash(apply_sbox: &Fn(&Scalar) -> Scalar, sbox_type: &SboxType, transcript_label: &'static [u8]) {
+    fn poseidon_hash(sbox_type: &SboxType, transcript_label: &'static [u8]) {
         let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
         let width = 6;
         let (full_b, full_e) = (4, 4);
@@ -503,7 +502,7 @@ mod tests {
 
         let xl = Scalar::random(&mut test_rng);
         let xr = Scalar::random(&mut test_rng);
-        let expected_output = Poseidon_hash_2(xl, xr, &s_params, apply_sbox);
+        let expected_output = Poseidon_hash_2(xl, xr, &s_params, sbox_type);
 
         let pc_gens = PedersenGens::default();
         let bp_gens = BulletproofGens::new(2048, 1);
@@ -590,21 +589,21 @@ mod tests {
 
     #[test]
     fn test_poseidon_perm_cube_sbox() {
-        poseidon_perm(&apply_cube_sbox, &SboxType::Cube, b"Poseidon_perm_cube");
+        poseidon_perm(&SboxType::Cube, b"Poseidon_perm_cube");
     }
 
     #[test]
     fn test_poseidon_perm_inverse_sbox() {
-        poseidon_perm(&apply_inverse_sbox, &SboxType::Inverse, b"Poseidon_perm_inverse");
+        poseidon_perm(&SboxType::Inverse, b"Poseidon_perm_inverse");
     }
 
     #[test]
     fn test_poseidon_hash_cube_sbox() {
-        poseidon_hash(&apply_cube_sbox, &SboxType::Cube, b"Poseidon_hash_cube");
+        poseidon_hash(&SboxType::Cube, b"Poseidon_hash_cube");
     }
 
     #[test]
     fn test_poseidon_hash_inverse_sbox() {
-        poseidon_hash(&apply_inverse_sbox, &SboxType::Inverse, b"Poseidon_hash_inverse");
+        poseidon_hash(&SboxType::Inverse, b"Poseidon_hash_inverse");
     }
 }
