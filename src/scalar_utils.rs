@@ -175,6 +175,56 @@ pub fn u64_array_to_scalar(array: &[u64; 4]) -> Scalar {
 }
 
 
+/// Following code for handling Hex is taken from https://play.rust-lang.org/?version=stable&mode=debug&edition=2015&gist=e241493d100ecaadac3c99f37d0f766f
+use std::num::ParseIntError;
+
+pub fn decode_hex(s: &str) -> Result<Vec<u8>, DecodeHexError> {
+    let s = if s[0..2] == *"0x" || s[0..2] == *"0X" {
+        match s.char_indices().skip(2).next() {
+            Some((pos, _)) => &s[pos..],
+            None => "",
+        }
+    } else { s };
+    if s.len() % 2 != 0 {
+        Err(DecodeHexError::OddLength)
+    } else {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.into()))
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DecodeHexError {
+    OddLength,
+    ParseInt(ParseIntError),
+}
+
+impl From<ParseIntError> for DecodeHexError {
+    fn from(e: ParseIntError) -> Self {
+        DecodeHexError::ParseInt(e)
+    }
+}
+
+impl fmt::Display for DecodeHexError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DecodeHexError::OddLength => "input string has an odd number of bytes".fmt(f),
+            DecodeHexError::ParseInt(e) => e.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for DecodeHexError {}
+
+pub fn get_scalar_from_hex(hex_str: &str) -> Result<Scalar, DecodeHexError> {
+    let bytes = decode_hex(hex_str)?;
+    let mut result: [u8; 32] = [0; 32];
+    result.copy_from_slice(&bytes);
+    Ok(Scalar::from_bytes_mod_order(result))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,3 +277,4 @@ mod tests {
         }
     }
 }
+

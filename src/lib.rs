@@ -15,4 +15,5 @@ pub mod gadget_zero_nonzero;
 pub mod gadget_mimc;
 pub mod gadget_vsmt;
 pub mod gadget_osmt;    /// This is incomplete
+mod poseidon_constants;
 pub mod gadget_poseidon;

@@ -11,7 +11,8 @@ use bulletproofs::r1cs::LinearCombination;
 
 use crate::r1cs_utils::{AllocatedScalar, constrain_lc_with_scalar};
 use crate::gadget_zero_nonzero::is_nonzero_gadget;
-
+use crate::poseidon_constants::{MDS_ENTRIES, ROUND_CONSTS};
+use crate::scalar_utils::get_scalar_from_hex;
 
 // TODO: Add serialization with serde
 pub struct PoseidonParams {
@@ -42,15 +43,38 @@ impl PoseidonParams {
         }
     }
 
-    // TODO: Generate correct round keys
+    // TODO: Write logic to generate correct round keys. Currently loading hardcoded constants.
     fn gen_round_keys(width: usize, total_rounds: usize) -> Vec<Scalar> {
-        let cap = (total_rounds + 1) * width;
-        vec![Scalar::one(); cap]
+        let cap = total_rounds * width;
+        // vec![Scalar::one(); cap]
+        if ROUND_CONSTS.len() < cap {
+            panic!("Not enough round constants, need {}, found {}", cap, ROUND_CONSTS.len());
+        }
+        let mut rc = vec![];
+        for i in 0..cap {
+            // TODO: Remove unwrap, handle error
+            rc.push(get_scalar_from_hex(ROUND_CONSTS[i]).unwrap());
+        }
+        rc
     }
 
-    // TODO: Generate correct MDS matrix
+    // TODO: Write logic to generate correct MDS matrix
     fn gen_MDS_matrix(width: usize) -> Vec<Vec<Scalar>> {
-        vec![vec![Scalar::one(); width]; width]
+        // vec![vec![Scalar::one(); width]; width]
+        if MDS_ENTRIES.len() != width {
+            panic!("Incorrect width, only width {} is supported now", width);
+        }
+        let mut mds: Vec<Vec<Scalar>> = vec![vec![Scalar::zero(); width]; width];
+        for i in 0..width {
+            if MDS_ENTRIES[i].len() != width {
+                panic!("Incorrect width, only width {} is supported now", width);
+            }
+            for j in 0..width {
+                // TODO: Remove unwrap, handle error
+                mds[i][j] = get_scalar_from_hex(MDS_ENTRIES[i][j]).unwrap()
+            }
+        }
+        mds
     }
 }
 
@@ -429,17 +453,17 @@ mod tests {
         let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
         let width = 6;
         let (full_b, full_e) = (4, 4);
-        let partial_rounds = 6;
+        let partial_rounds = 140;
         let s_params = PoseidonParams::new(width, full_b, full_e, partial_rounds);
         let total_rounds = full_b + full_e + partial_rounds;
 
         let input = (0..width).map(|_| Scalar::random(&mut test_rng)).collect::<Vec<_>>();
         let expected_output = Poseidon_permutation(&input, &s_params, sbox_type);
 
-        println!("Input:\n");
+        /*println!("Input:\n");
         println!("{:?}", &input);
         println!("Expected output:\n");
-        println!("{:?}", &expected_output);
+        println!("{:?}", &expected_output);*/
 
         let pc_gens = PedersenGens::default();
         let bp_gens = BulletproofGens::new(2048, 1);
@@ -466,6 +490,8 @@ mod tests {
                                                 &s_params,
                                                 sbox_type,
                                                 &expected_output).is_ok());
+
+            println!("For Poseidon permutation rounds {}, no of constraints is {}", total_rounds, &prover.num_constraints());
 
             let proof = prover.prove(&bp_gens).unwrap();
             (proof, comms)
@@ -496,7 +522,7 @@ mod tests {
         let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
         let width = 6;
         let (full_b, full_e) = (4, 4);
-        let partial_rounds = 6;
+        let partial_rounds = 140;
         let s_params = PoseidonParams::new(width, full_b, full_e, partial_rounds);
         let total_rounds = full_b + full_e + partial_rounds;
 
@@ -545,6 +571,8 @@ mod tests {
                                            &s_params,
                                            sbox_type,
                                            &expected_output).is_ok());
+
+            println!("For Poseidon hash rounds {}, no of constraints is {}", total_rounds, &prover.num_constraints());
 
             let proof = prover.prove(&bp_gens).unwrap();
             (proof, comms)
