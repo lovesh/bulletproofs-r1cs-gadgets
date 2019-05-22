@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 extern crate rand;
 extern crate curve25519_dalek;
 extern crate merlin;
@@ -245,34 +247,26 @@ fn Poseidon_permutation(
     current_state
 }
 
-/// 2:1 (2 inputs, 1 output) hash from the permutation by passing the first input as zero, 2 of the next 4 as non-zero and rest zero. Choose one of the outputs.
+/// 2:1 (2 inputs, 1 output) hash from the permutation by passing the first input as zero, 2 of the next 4 as non-zero, a padding constant and rest zero. Choose one of the outputs.
+
+// Choice is arbitrary
+pub const PADDING_CONST: u64 = 101;
+
 pub fn Poseidon_hash_2(xl: Scalar, xr: Scalar, params: &PoseidonParams, sbox: &SboxType) -> Scalar {
-    // Only 2 inputs to the permutation are set to the input of this hash function, rest are 0. Always keep the 1st input as 0
+    // Only 2 inputs to the permutation are set to the input of this hash function,
+    // one is set to the padding constant and rest are 0. Always keep the 1st input as 0
 
     let input = vec![
         Scalar::zero(),
         xl,
         xr,
-        Scalar::zero(),
+        Scalar::from(PADDING_CONST),
         Scalar::zero(),
         Scalar::zero()
     ];
 
     // Never take the first input
     Poseidon_permutation(&input, params, sbox)[1]
-}
-
-fn apply_linear_layer(
-    width: usize,
-    sbox_outs: Vec<LinearCombination>,
-    next_inputs: &mut Vec<LinearCombination>,
-    MDS_matrix: &Vec<Vec<Scalar>>,
-) {
-    for j in 0..width {
-        for i in 0..width {
-            next_inputs[i] = next_inputs[i].clone() + sbox_outs[j].clone() * MDS_matrix[i][j];
-        }
-    }
 }
 
 pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
@@ -283,6 +277,19 @@ pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
 ) -> Result<Vec<LinearCombination>, R1CSError> {
     let width = params.width;
     assert_eq!(input.len(), width);
+
+    fn apply_linear_layer(
+        width: usize,
+        sbox_outs: Vec<LinearCombination>,
+        next_inputs: &mut Vec<LinearCombination>,
+        MDS_matrix: &Vec<Vec<Scalar>>,
+    ) {
+        for j in 0..width {
+            for i in 0..width {
+                next_inputs[i] = next_inputs[i].clone() + sbox_outs[j].clone() * MDS_matrix[i][j];
+            }
+        }
+    }
 
     let mut input_vars: Vec<LinearCombination> = input.iter().map(|i|i.variable.into()).collect();
 
@@ -402,22 +409,22 @@ pub fn Poseidon_hash_2_constraints<'a, CS: ConstraintSystem>(
     cs: &mut CS,
     xl: AllocatedScalar,
     xr: AllocatedScalar,
-    zeros: Vec<AllocatedScalar>,
+    statics: Vec<AllocatedScalar>,
     params: &'a PoseidonParams,
     sbox_type: &SboxType,
 ) -> Result<LinearCombination, R1CSError> {
     let width = params.width;
     // Only 2 inputs to the permutation are set to the input of this hash function.
-    assert_eq!(zeros.len(), width-2);
+    assert_eq!(statics.len(), width-2);
 
     // Always keep the 1st input as 0
-    let mut inputs = vec![zeros[0]];
+    let mut inputs = vec![statics[0]];
     inputs.push(xl);
     inputs.push(xr);
 
-    // zeros correspond to committed variables with value and randomness both 0
-    for i in 1..zeros.len() {
-        inputs.push(zeros[i]);
+    // statics correspond to committed variables with values as PADDING_CONST and 0s and randomness as 0
+    for i in 1..statics.len() {
+        inputs.push(statics[i]);
     }
     let permutation_output = Poseidon_permutation_constraints::<CS>(cs, inputs, params, sbox_type)?;
     Ok(permutation_output[1].to_owned())
@@ -522,7 +529,7 @@ mod tests {
         let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
         let width = 6;
         let (full_b, full_e) = (4, 4);
-        let partial_rounds = 140;
+        let partial_rounds = 144;
         let s_params = PoseidonParams::new(width, full_b, full_e, partial_rounds);
         let total_rounds = full_b + full_e + partial_rounds;
 
@@ -539,7 +546,7 @@ mod tests {
             let mut prover = Prover::new(&pc_gens, &mut prover_transcript);
 
             let mut comms = vec![];
-            let mut zero_allocs = vec![];
+            let mut statics = vec![];
 
             let (com_l, var_l) = prover.commit(xl.clone(), Scalar::random(&mut test_rng));
             comms.push(com_l);
@@ -555,10 +562,17 @@ mod tests {
                 assignment: Some(xr),
             };
 
+            // Commitment to PADDING_CONST with blinding as 0
+            let (_, var) = prover.commit(Scalar::from(PADDING_CONST), Scalar::zero());
+            statics.push(AllocatedScalar {
+                variable: var,
+                assignment: Some(Scalar::from(PADDING_CONST)),
+            });
+
             // Commit to 0 with randomness 0 for the rest of the elements of width
-            for _ in 2..width {
+            for _ in 3..width {
                 let (_, var) = prover.commit(Scalar::zero(), Scalar::zero());
-                zero_allocs.push(AllocatedScalar {
+                statics.push(AllocatedScalar {
                     variable: var,
                     assignment: Some(Scalar::zero()),
                 });
@@ -567,7 +581,7 @@ mod tests {
             assert!(Poseidon_hash_2_gadget(&mut prover,
                                            l_alloc,
                                            r_alloc,
-                                           zero_allocs,
+                                           statics,
                                            &s_params,
                                            sbox_type,
                                            &expected_output).is_ok());
@@ -582,7 +596,7 @@ mod tests {
 
         let mut verifier_transcript = Transcript::new(transcript_label);
         let mut verifier = Verifier::new(&mut verifier_transcript);
-        let mut zero_allocs = vec![];
+        let mut statics = vec![];
         let lv = verifier.commit(commitments[0]);
         let rv = verifier.commit(commitments[1]);
         let l_alloc = AllocatedScalar {
@@ -594,12 +608,20 @@ mod tests {
             assignment: None,
         };
 
+        // Commitment to PADDING_CONST with blinding as 0
+        let pad_comm = pc_gens.commit(Scalar::from(PADDING_CONST), Scalar::zero()).compress();
+        let v = verifier.commit(pad_comm);
+        statics.push(AllocatedScalar {
+            variable: v,
+            assignment: None,
+        });
+
         // Commitment to 0 with blinding as 0
         let zero_comm = pc_gens.commit(Scalar::zero(), Scalar::zero()).compress();
 
-        for i in 2..width {
+        for i in 3..width {
             let v = verifier.commit(zero_comm.clone());
-            zero_allocs.push(AllocatedScalar {
+            statics.push(AllocatedScalar {
                 variable: v,
                 assignment: None,
             });
@@ -607,7 +629,7 @@ mod tests {
         assert!(Poseidon_hash_2_gadget(&mut verifier,
                                        l_alloc,
                                        r_alloc,
-                                       zero_allocs,
+                                       statics,
                                        &s_params,
                                        sbox_type,
                                        &expected_output).is_ok());
