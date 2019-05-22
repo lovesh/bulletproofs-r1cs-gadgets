@@ -10,7 +10,7 @@ This repo contains several examples that show how various statements can be repr
 5. [Proof of set non-membership](src/gadget_set_non_membership.rs)
 6. [Proof knowledge of preimage given image of MiMC hash function](src/gadget_mimc.rs)
 7. [Proof of knowledge of leaf in a sparse merkle tree. Uses MiMC hash function.](src/gadget_vsmt.rs)
-8. [Poseidon permutation](src/gadget_poseidon.rs). 2 kinds of S-boxes, cube and inverse. Hash function constraint system pending. Described in [this paper](https://eprint.iacr.org/2019/458).
+8. [Poseidon permutation and a 2:1 hash function based on it](src/gadget_poseidon.rs). 2 kinds of S-boxes, cube and inverse. Described in [this paper](https://eprint.iacr.org/2019/458).
 
 ## Building
 This project uses a slightly modified implementation of Bulletproofs's `develop` branch. The difference is addition of the method `num_constraints` to `Prover` 

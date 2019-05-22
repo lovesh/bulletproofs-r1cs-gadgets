@@ -14,7 +14,7 @@ use bulletproofs::r1cs::LinearCombination;
 
 use crate::scalar_utils::{ScalarBytes, TreeDepth, ScalarBits, get_bits};
 use crate::r1cs_utils::{AllocatedScalar, constrain_lc_with_scalar};
-use crate::gadget_mimc::{mimc, MIMC_ROUNDS, hash_2, mimc_gadget};
+use crate::gadget_mimc::{mimc, MIMC_ROUNDS, mimc_hash_2, mimc_gadget};
 
 
 type DBVal = (Scalar, Scalar);
@@ -186,7 +186,7 @@ pub fn vanilla_merkle_merkle_tree_verif_gadget<CS: ConstraintSystem>(
         let (_, _, right_2) = cs.multiply(one_minus_leaf_side, proof_nodes[i].variable.into());
         let right = right_1 + right_2;
 
-        prev_hash = hash_2::<CS>(cs, left, right, mimc_rounds, mimc_constants)?;
+        prev_hash = mimc_hash_2::<CS>(cs, left, right, mimc_rounds, mimc_constants)?;
     }
 
     constrain_lc_with_scalar::<CS>(cs, prev_hash, root);

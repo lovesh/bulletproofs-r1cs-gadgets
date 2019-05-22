@@ -46,17 +46,17 @@ pub fn mimc_gadget<CS: ConstraintSystem>(
     mimc_constants: &[Scalar],
     image: &Scalar
 ) -> Result<(), R1CSError> {
-    let res_v = hash_2::<CS>(cs, left.variable.into(), right.variable.into(), mimc_rounds, mimc_constants)?;
+    let res_v = mimc_hash_2::<CS>(cs, left.variable.into(), right.variable.into(), mimc_rounds, mimc_constants)?;
     constrain_lc_with_scalar::<CS>(cs, res_v, image);
     Ok(())
 }
 
 
-pub fn hash_2<CS: ConstraintSystem>(cs: &mut CS,
-              left: LinearCombination,
-              right: LinearCombination,
-              mimc_rounds: usize,
-              mimc_constants: &[Scalar]) -> Result<LinearCombination, R1CSError> {
+pub fn mimc_hash_2<CS: ConstraintSystem>(cs: &mut CS,
+                                         left: LinearCombination,
+                                         right: LinearCombination,
+                                         mimc_rounds: usize,
+                                         mimc_constants: &[Scalar]) -> Result<LinearCombination, R1CSError> {
     let mut left_v = left;
     let mut right_v = right;
 
@@ -117,12 +117,12 @@ mod tests {
                 let (com_l, var_l) = prover.commit(xl, Scalar::random(&mut test_rng));
                 let (com_r, var_r) = prover.commit(xr, Scalar::random(&mut test_rng));
 
-                let mut left_alloc_scalar = AllocatedScalar {
+                let left_alloc_scalar = AllocatedScalar {
                     variable: var_l,
                     assignment: Some(xl),
                 };
 
-                let mut right_alloc_scalar = AllocatedScalar {
+                let right_alloc_scalar = AllocatedScalar {
                     variable: var_r,
                     assignment: Some(xr),
                 };
@@ -148,12 +148,12 @@ mod tests {
             let var_l = verifier.commit(commitments.0);
             let var_r = verifier.commit(commitments.1);
 
-            let mut left_alloc_scalar = AllocatedScalar {
+            let left_alloc_scalar = AllocatedScalar {
                 variable: var_l,
                 assignment: None,
             };
 
-            let mut right_alloc_scalar = AllocatedScalar {
+            let right_alloc_scalar = AllocatedScalar {
                 variable: var_r,
                 assignment: None,
             };
