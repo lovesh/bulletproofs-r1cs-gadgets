@@ -22,7 +22,14 @@ pub fn bound_check_gadget<CS: ConstraintSystem>(
     n: usize
 ) -> Result<(), R1CSError> {
 
+    // a = v - min
+    // b = max - v
     // a + b = max - min
+
+    cs.constrain(v.variable - LinearCombination::from(min) - a.variable);
+
+    cs.constrain(LinearCombination::from(max) - v.variable - b.variable);
+
     // Constrain a + b to be same as max - min.
     constrain_lc_with_scalar::<CS>(cs, a.variable + b.variable, &Scalar::from(max - min));
 

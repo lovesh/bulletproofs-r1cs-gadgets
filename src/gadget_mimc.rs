@@ -135,7 +135,7 @@ mod tests {
                                     &constants,
                                     &image).is_ok());
 
-                //println!("For MiMC rounds {}, no of constraints is {}", &MIMC_ROUNDS, &prover.num_constraints());
+                println!("For MiMC rounds {}, no of constraints is {}", &MIMC_ROUNDS, &prover.num_constraints());
 
                 let proof = prover.prove(&bp_gens).unwrap();
                 total_proving += start.elapsed();
