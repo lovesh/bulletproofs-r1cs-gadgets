@@ -9,7 +9,7 @@ This repo contains several examples that show how various statements can be repr
 4. Proof of set membership, 2 implementations [1](src/gadget_set_membership.rs), [2](src/gadget_set_membership_1.rs)
 5. [Proof of set non-membership](src/gadget_set_non_membership.rs)
 6. [Proof knowledge of preimage given image of MiMC hash function](src/gadget_mimc.rs)
-7. [Proof of knowledge of leaf in a sparse merkle tree. Uses MiMC hash function.](src/gadget_vsmt.rs)
+7. [Proof of knowledge of leaf in a sparse merkle tree. Uses Poseidon hash function.](src/gadget_vsmt.rs)
 8. [Poseidon permutation and a 2:1 hash function based on it](src/gadget_poseidon.rs). 2 kinds of S-boxes, cube and inverse. Described in [this paper](https://eprint.iacr.org/2019/458). 
 The parameters are generated using a sage worksheet supplied by Dmitry Khovratovich and a Jupyter notebook for that worksheet is present in the repo called Poseidon_Ristretto.ipynb. 
 
