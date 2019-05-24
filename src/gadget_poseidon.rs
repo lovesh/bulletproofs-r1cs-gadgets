@@ -15,6 +15,10 @@ use crate::r1cs_utils::{AllocatedScalar, constrain_lc_with_scalar};
 use crate::gadget_zero_nonzero::is_nonzero_gadget;
 use crate::poseidon_constants::{MDS_ENTRIES, ROUND_CONSTS};
 use crate::scalar_utils::get_scalar_from_hex;
+use rand::SeedableRng;
+use rand::rngs::StdRng;
+use curve25519_dalek::ristretto::CompressedRistretto;
+
 
 // TODO: Add serialization with serde
 pub struct PoseidonParams {
@@ -30,9 +34,8 @@ pub struct PoseidonParams {
 }
 
 impl PoseidonParams {
-    fn new(width: usize, full_rounds_beginning: usize, full_rounds_end: usize, partial_rounds: usize) -> PoseidonParams {
+    pub fn new(width: usize, full_rounds_beginning: usize, full_rounds_end: usize, partial_rounds: usize) -> PoseidonParams {
         let total_rounds = full_rounds_beginning + partial_rounds + full_rounds_end;
-//        let round_constants = Self::gen_round_constants(width, total_rounds);
         let round_keys = Self::gen_round_keys(width, total_rounds);
         let matrix_2 = Self::gen_MDS_matrix(width);
         PoseidonParams {
@@ -45,11 +48,12 @@ impl PoseidonParams {
         }
     }
 
-    // TODO: Write logic to generate correct round keys. Currently loading hardcoded constants.
+    // TODO: Write logic to generate correct round keys.
     fn gen_round_keys(width: usize, total_rounds: usize) -> Vec<Scalar> {
+        let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
         let cap = total_rounds * width;
-        // vec![Scalar::one(); cap]
-        if ROUND_CONSTS.len() < cap {
+        vec![Scalar::random(&mut test_rng); cap]
+        /*if ROUND_CONSTS.len() < cap {
             panic!("Not enough round constants, need {}, found {}", cap, ROUND_CONSTS.len());
         }
         let mut rc = vec![];
@@ -57,13 +61,14 @@ impl PoseidonParams {
             // TODO: Remove unwrap, handle error
             rc.push(get_scalar_from_hex(ROUND_CONSTS[i]).unwrap());
         }
-        rc
+        rc*/
     }
 
-    // TODO: Write logic to generate correct MDS matrix
+    // TODO: Write logic to generate correct MDS matrix. Currently loading hardcoded constants.
     fn gen_MDS_matrix(width: usize) -> Vec<Vec<Scalar>> {
-        // vec![vec![Scalar::one(); width]; width]
-        if MDS_ENTRIES.len() != width {
+        let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
+        vec![vec![Scalar::random(&mut test_rng); width]; width]
+        /*if MDS_ENTRIES.len() != width {
             panic!("Incorrect width, only width {} is supported now", width);
         }
         let mut mds: Vec<Vec<Scalar>> = vec![vec![Scalar::zero(); width]; width];
@@ -76,7 +81,7 @@ impl PoseidonParams {
                 mds[i][j] = get_scalar_from_hex(MDS_ENTRIES[i][j]).unwrap()
             }
         }
-        mds
+        mds*/
     }
 }
 
@@ -102,7 +107,7 @@ impl SboxType {
         match self {
             SboxType::Cube => synthesize_cube_sbox(cs, input_var, round_key),
             SboxType::Inverse => synthesize_inverse_sbox(cs, input_var, round_key),
-            _ => Err(R1CSError::GadgetError {description: String::from("inverse not implemented")})
+            _ => Err(R1CSError::GadgetError {description: String::from("Unknown Sbox type")})
         }
     }
 }
@@ -271,7 +276,7 @@ pub fn Poseidon_hash_2(xl: Scalar, xr: Scalar, params: &PoseidonParams, sbox: &S
 
 pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
     cs: &mut CS,
-    input: Vec<AllocatedScalar>,
+    input: Vec<LinearCombination>,
     params: &'a PoseidonParams,
     sbox_type: &SboxType
 ) -> Result<Vec<LinearCombination>, R1CSError> {
@@ -291,7 +296,7 @@ pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
         }
     }
 
-    let mut input_vars: Vec<LinearCombination> = input.iter().map(|i|i.variable.into()).collect();
+    let mut input_vars: Vec<LinearCombination> = input;
 
     let mut round_keys_offset = 0;
 
@@ -358,7 +363,7 @@ pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
 
     // ------------ Last rounds with full SBox begin --------------------
 
-    for k in full_rounds_beginning+partial_rounds..(full_rounds_beginning+partial_rounds+full_rounds_end) {
+    for k in (full_rounds_beginning+partial_rounds)..(full_rounds_beginning+partial_rounds+full_rounds_end) {
         let mut sbox_outputs: Vec<LinearCombination> = vec![LinearCombination::default(); width];
 
         // Substitution (S-box) layer
@@ -396,7 +401,8 @@ pub fn Poseidon_permutation_gadget<'a, CS: ConstraintSystem>(
     let width = params.width;
     assert_eq!(output.len(), width);
 
-    let permutation_output = Poseidon_permutation_constraints::<CS>(cs, input, params, sbox_type)?;
+    let input_vars: Vec<LinearCombination> = input.iter().map(|e| e.variable.into()).collect();
+    let permutation_output = Poseidon_permutation_constraints::<CS>(cs, input_vars, params, sbox_type)?;
 
     for i in 0..width {
         constrain_lc_with_scalar::<CS>(cs, permutation_output[i].to_owned(), &output[i]);
@@ -407,9 +413,9 @@ pub fn Poseidon_permutation_gadget<'a, CS: ConstraintSystem>(
 
 pub fn Poseidon_hash_2_constraints<'a, CS: ConstraintSystem>(
     cs: &mut CS,
-    xl: AllocatedScalar,
-    xr: AllocatedScalar,
-    statics: Vec<AllocatedScalar>,
+    xl: LinearCombination,
+    xr: LinearCombination,
+    statics: Vec<LinearCombination>,
     params: &'a PoseidonParams,
     sbox_type: &SboxType,
 ) -> Result<LinearCombination, R1CSError> {
@@ -418,13 +424,13 @@ pub fn Poseidon_hash_2_constraints<'a, CS: ConstraintSystem>(
     assert_eq!(statics.len(), width-2);
 
     // Always keep the 1st input as 0
-    let mut inputs = vec![statics[0]];
+    let mut inputs = vec![statics[0].to_owned()];
     inputs.push(xl);
     inputs.push(xr);
 
     // statics correspond to committed variables with values as PADDING_CONST and 0s and randomness as 0
     for i in 1..statics.len() {
-        inputs.push(statics[i]);
+        inputs.push(statics[i].to_owned());
     }
     let permutation_output = Poseidon_permutation_constraints::<CS>(cs, inputs, params, sbox_type)?;
     Ok(permutation_output[1].to_owned())
@@ -434,13 +440,14 @@ pub fn Poseidon_hash_2_gadget<'a, CS: ConstraintSystem>(
     cs: &mut CS,
     xl: AllocatedScalar,
     xr: AllocatedScalar,
-    zeros: Vec<AllocatedScalar>,
+    statics: Vec<AllocatedScalar>,
     params: &'a PoseidonParams,
     sbox_type: &SboxType,
     output: &Scalar
 ) -> Result<(), R1CSError> {
 
-    let hash = Poseidon_hash_2_constraints::<CS>(cs, xl, xr, zeros, params, sbox_type)?;
+    let statics: Vec<LinearCombination> = statics.iter().map(|s| s.variable.into()).collect();
+    let hash = Poseidon_hash_2_constraints::<CS>(cs, xl.variable.into(), xr.variable.into(), statics, params, sbox_type)?;
 
     constrain_lc_with_scalar::<CS>(cs, hash, output);
 
@@ -448,13 +455,56 @@ pub fn Poseidon_hash_2_gadget<'a, CS: ConstraintSystem>(
 }
 
 
+/// Allocate padding constant and zeroes for Prover
+pub fn allocate_statics_for_prover(prover: &mut Prover, width: usize) -> Vec<AllocatedScalar> {
+    let mut statics = vec![];
+    // Commitment to PADDING_CONST with blinding as 0
+    let (_, var) = prover.commit(Scalar::from(PADDING_CONST), Scalar::zero());
+    statics.push(AllocatedScalar {
+        variable: var,
+        assignment: Some(Scalar::from(PADDING_CONST)),
+    });
+
+    // Commit to 0 with randomness 0 for the rest of the elements of width
+    for _ in 3..width {
+        let (_, var) = prover.commit(Scalar::zero(), Scalar::zero());
+        statics.push(AllocatedScalar {
+            variable: var,
+            assignment: Some(Scalar::zero()),
+        });
+    }
+    statics
+}
+
+/// Allocate padding constant and zeroes for Verifier
+pub fn allocate_statics_for_verifier(verifier: &mut Verifier, width: usize, pc_gens: &PedersenGens) -> Vec<AllocatedScalar> {
+    let mut statics = vec![];
+    // Commitment to PADDING_CONST with blinding as 0
+    let pad_comm = pc_gens.commit(Scalar::from(PADDING_CONST), Scalar::zero()).compress();
+    let v = verifier.commit(pad_comm);
+    statics.push(AllocatedScalar {
+        variable: v,
+        assignment: None,
+    });
+
+    // Commitment to 0 with blinding as 0
+    let zero_comm = pc_gens.commit(Scalar::zero(), Scalar::zero()).compress();
+
+    for i in 3..width {
+        let v = verifier.commit(zero_comm.clone());
+        statics.push(AllocatedScalar {
+            variable: v,
+            assignment: None,
+        });
+    }
+    statics
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     // For benchmarking
     use std::time::{Duration, Instant};
-    use rand::SeedableRng;
-    use super::rand::rngs::StdRng;
 
     fn poseidon_perm(sbox_type: &SboxType, transcript_label: &'static [u8]) {
         let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
@@ -529,7 +579,7 @@ mod tests {
         let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
         let width = 6;
         let (full_b, full_e) = (4, 4);
-        let partial_rounds = 144;
+        let partial_rounds = 6;
         let s_params = PoseidonParams::new(width, full_b, full_e, partial_rounds);
         let total_rounds = full_b + full_e + partial_rounds;
 
@@ -546,7 +596,6 @@ mod tests {
             let mut prover = Prover::new(&pc_gens, &mut prover_transcript);
 
             let mut comms = vec![];
-            let mut statics = vec![];
 
             let (com_l, var_l) = prover.commit(xl.clone(), Scalar::random(&mut test_rng));
             comms.push(com_l);
@@ -562,21 +611,7 @@ mod tests {
                 assignment: Some(xr),
             };
 
-            // Commitment to PADDING_CONST with blinding as 0
-            let (_, var) = prover.commit(Scalar::from(PADDING_CONST), Scalar::zero());
-            statics.push(AllocatedScalar {
-                variable: var,
-                assignment: Some(Scalar::from(PADDING_CONST)),
-            });
-
-            // Commit to 0 with randomness 0 for the rest of the elements of width
-            for _ in 3..width {
-                let (_, var) = prover.commit(Scalar::zero(), Scalar::zero());
-                statics.push(AllocatedScalar {
-                    variable: var,
-                    assignment: Some(Scalar::zero()),
-                });
-            }
+            let statics = allocate_statics_for_prover(&mut prover, width);
 
             assert!(Poseidon_hash_2_gadget(&mut prover,
                                            l_alloc,
@@ -596,7 +631,7 @@ mod tests {
 
         let mut verifier_transcript = Transcript::new(transcript_label);
         let mut verifier = Verifier::new(&mut verifier_transcript);
-        let mut statics = vec![];
+
         let lv = verifier.commit(commitments[0]);
         let rv = verifier.commit(commitments[1]);
         let l_alloc = AllocatedScalar {
@@ -608,24 +643,7 @@ mod tests {
             assignment: None,
         };
 
-        // Commitment to PADDING_CONST with blinding as 0
-        let pad_comm = pc_gens.commit(Scalar::from(PADDING_CONST), Scalar::zero()).compress();
-        let v = verifier.commit(pad_comm);
-        statics.push(AllocatedScalar {
-            variable: v,
-            assignment: None,
-        });
-
-        // Commitment to 0 with blinding as 0
-        let zero_comm = pc_gens.commit(Scalar::zero(), Scalar::zero()).compress();
-
-        for i in 3..width {
-            let v = verifier.commit(zero_comm.clone());
-            statics.push(AllocatedScalar {
-                variable: v,
-                assignment: None,
-            });
-        }
+        let statics = allocate_statics_for_verifier(&mut verifier, width, &pc_gens);
         assert!(Poseidon_hash_2_gadget(&mut verifier,
                                        l_alloc,
                                        r_alloc,

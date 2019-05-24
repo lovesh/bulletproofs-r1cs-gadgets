@@ -14,28 +14,33 @@ use bulletproofs::r1cs::LinearCombination;
 
 use crate::scalar_utils::{ScalarBytes, TreeDepth, ScalarBits, get_bits};
 use crate::r1cs_utils::{AllocatedScalar, constrain_lc_with_scalar};
-use crate::gadget_mimc::{mimc, MIMC_ROUNDS, mimc_hash_2, mimc_gadget};
-
+// use crate::gadget_mimc::{mimc, MIMC_ROUNDS, mimc_hash_2, mimc_gadget};
+use crate::gadget_poseidon::{PoseidonParams, Poseidon_hash_2, Poseidon_hash_2_constraints, Poseidon_hash_2_gadget, SboxType,
+                             allocate_statics_for_prover, allocate_statics_for_verifier};
 
 type DBVal = (Scalar, Scalar);
+
+// TODO: ABSTRACT HASH FUNCTION BETTER
 
 pub struct VanillaSparseMerkleTree<'a> {
     pub depth: usize,
     empty_tree_hashes: Vec<Scalar>,
     db: HashMap<ScalarBytes, DBVal>,
-    hash_constants: &'a [Scalar],
+    //hash_constants: &'a [Scalar],
+    hash_params: &'a PoseidonParams,
     pub root: Scalar
 }
 
 impl<'a> VanillaSparseMerkleTree<'a> {
-    pub fn new(hash_constants: &'a [Scalar]) -> VanillaSparseMerkleTree<'a> {
+    pub fn new(hash_params: &'a PoseidonParams) -> VanillaSparseMerkleTree<'a> {
         let depth = TreeDepth;
         let mut db = HashMap::new();
         let mut empty_tree_hashes: Vec<Scalar> = vec![];
         empty_tree_hashes.push(Scalar::zero());
         for i in 1..=depth {
             let prev = empty_tree_hashes[i-1];
-            let new = mimc(&prev, &prev, hash_constants);
+            //let new = mimc(&prev, &prev, hash_constants);
+            let new = Poseidon_hash_2(prev.clone(), prev.clone(), hash_params, &SboxType::Cube);
             let key = new.to_bytes();
 
             db.insert(key, (prev, prev));
@@ -48,7 +53,7 @@ impl<'a> VanillaSparseMerkleTree<'a> {
             depth,
             empty_tree_hashes,
             db,
-            hash_constants,
+            hash_params,
             root
         }
     }
@@ -68,12 +73,14 @@ impl<'a> VanillaSparseMerkleTree<'a> {
             let new_val = {
                 if cur_idx.is_lsb_set() {
                     // LSB is set, so put new value on right
-                    let h =  mimc(&side_elem, &cur_val, self.hash_constants);
+                    //let h =  mimc(&side_elem, &cur_val, self.hash_constants);
+                    let h =  Poseidon_hash_2(side_elem.clone(), cur_val.clone(), self.hash_params, &SboxType::Cube);
                     self.update_db_with_key_val(h, (side_elem, cur_val));
                     h
                 } else {
                     // LSB is unset, so put new value on left
-                    let h =  mimc(&cur_val, &side_elem, self.hash_constants);
+                    //let h =  mimc(&cur_val, &side_elem, self.hash_constants);
+                    let h =  Poseidon_hash_2(cur_val.clone(), side_elem.clone(), self.hash_params, &SboxType::Cube);
                     self.update_db_with_key_val(h, (cur_val, side_elem));
                     h
                 }
@@ -129,9 +136,11 @@ impl<'a> VanillaSparseMerkleTree<'a> {
         for i in 0..self.depth {
             cur_val = {
                 if cur_idx.is_lsb_set() {
-                    mimc(&proof[self.depth-1-i], &cur_val, self.hash_constants)
+                    // mimc(&proof[self.depth-1-i], &cur_val, self.hash_constants)
+                    Poseidon_hash_2(proof[self.depth-1-i].clone(), cur_val.clone(), self.hash_params, &SboxType::Cube)
                 } else {
-                    mimc(&cur_val, &proof[self.depth-1-i], self.hash_constants)
+                    // mimc(&cur_val, &proof[self.depth-1-i], self.hash_constants)
+                    Poseidon_hash_2(cur_val.clone(), proof[self.depth-1-i].clone(), self.hash_params, &SboxType::Cube)
                 }
             };
 
@@ -164,11 +173,13 @@ pub fn vanilla_merkle_merkle_tree_verif_gadget<CS: ConstraintSystem>(
     leaf_val: AllocatedScalar,
     leaf_index_bits: Vec<AllocatedScalar>,
     proof_nodes: Vec<AllocatedScalar>,
-    mimc_rounds: usize,
-    mimc_constants: &[Scalar]
+    statics: Vec<AllocatedScalar>,
+    poseidon_params: &PoseidonParams
 ) -> Result<(), R1CSError> {
 
     let mut prev_hash = LinearCombination::default();
+
+    let statics: Vec<LinearCombination> = statics.iter().map(|s| s.variable.into()).collect();
 
     for i in 0..depth {
         let leaf_val_lc = if i == 0 {
@@ -186,7 +197,8 @@ pub fn vanilla_merkle_merkle_tree_verif_gadget<CS: ConstraintSystem>(
         let (_, _, right_2) = cs.multiply(one_minus_leaf_side, proof_nodes[i].variable.into());
         let right = right_1 + right_2;
 
-        prev_hash = mimc_hash_2::<CS>(cs, left, right, mimc_rounds, mimc_constants)?;
+        // prev_hash = mimc_hash_2::<CS>(cs, left, right, mimc_rounds, mimc_constants)?;
+        prev_hash = Poseidon_hash_2_constraints::<CS>(cs, left, right, statics.clone(), poseidon_params, &SboxType::Cube)?;
     }
 
     constrain_lc_with_scalar::<CS>(cs, prev_hash, root);
@@ -287,8 +299,13 @@ mod tests {
         let mut test_rng: OsRng = OsRng::new().unwrap();;
 
         // Generate the MiMC round constants
-        let constants = (0..MIMC_ROUNDS).map(|_| Scalar::random(&mut test_rng)).collect::<Vec<_>>();
-        let mut tree = VanillaSparseMerkleTree::new(&constants);
+        /*let constants = (0..MIMC_ROUNDS).map(|_| Scalar::random(&mut test_rng)).collect::<Vec<_>>();
+        let mut tree = VanillaSparseMerkleTree::new(&constants);*/
+        let width = 6;
+        let (full_b, full_e) = (4, 4);
+        let partial_rounds = 6;
+        let p_params = PoseidonParams::new(width, full_b, full_e, partial_rounds);
+        let mut tree = VanillaSparseMerkleTree::new(&p_params);
 
         for i in 1..10 {
             let s = Scalar::from(i as u32);
@@ -382,11 +399,17 @@ mod tests {
 
     #[test]
     fn test_VSMT_Verif() {
-        let mut test_rng: OsRng = OsRng::new().unwrap();;
+        let mut test_rng: OsRng = OsRng::new().unwrap();
 
         // Generate the MiMC round constants
-        let constants = (0..MIMC_ROUNDS).map(|_| Scalar::random(&mut test_rng)).collect::<Vec<_>>();
-        let mut tree = VanillaSparseMerkleTree::new(&constants);
+        /*let constants = (0..MIMC_ROUNDS).map(|_| Scalar::random(&mut test_rng)).collect::<Vec<_>>();
+        let mut tree = VanillaSparseMerkleTree::new(&constants);*/
+
+        let width = 6;
+        let (full_b, full_e) = (4, 4);
+        let partial_rounds = 6;
+        let p_params = PoseidonParams::new(width, full_b, full_e, partial_rounds);
+        let mut tree = VanillaSparseMerkleTree::new(&p_params);
 
         for i in 1..=10 {
             let s = Scalar::from(i as u32);
@@ -411,7 +434,7 @@ mod tests {
             let mut prover = Prover::new(&pc_gens, &mut prover_transcript);
 
             let (com_leaf, var_leaf) = prover.commit(k, Scalar::random(&mut test_rng));
-            let mut leaf_alloc_scalar = AllocatedScalar {
+            let leaf_alloc_scalar = AllocatedScalar {
                 variable: var_leaf,
                 assignment: Some(k),
             };
@@ -443,6 +466,8 @@ mod tests {
                 });
             }
 
+            let statics = allocate_statics_for_prover(&mut prover, width);
+
             let start = Instant::now();
             assert!(vanilla_merkle_merkle_tree_verif_gadget(
                 &mut prover,
@@ -451,8 +476,8 @@ mod tests {
                 leaf_alloc_scalar,
                 leaf_index_alloc_scalars,
                 proof_alloc_scalars,
-                                MIMC_ROUNDS,
-                                &constants).is_ok());
+                statics,
+                                &p_params).is_ok());
 
 //            println!("For tree height {} and MiMC rounds {}, no of constraints is {}", tree.depth, &MIMC_ROUNDS, &prover.num_constraints());
 
@@ -467,7 +492,7 @@ mod tests {
         let mut verifier_transcript = Transcript::new(b"VSMT");
         let mut verifier = Verifier::new(&mut verifier_transcript);
         let var_leaf = verifier.commit(commitments.0);
-        let mut leaf_alloc_scalar = AllocatedScalar {
+        let leaf_alloc_scalar = AllocatedScalar {
             variable: var_leaf,
             assignment: None,
         };
@@ -490,6 +515,8 @@ mod tests {
             });
         }
 
+        let statics = allocate_statics_for_verifier(&mut verifier, width, &pc_gens);
+
         let start = Instant::now();
         assert!(vanilla_merkle_merkle_tree_verif_gadget(
             &mut verifier,
@@ -498,8 +525,8 @@ mod tests {
             leaf_alloc_scalar,
             leaf_index_alloc_scalars,
             proof_alloc_scalars,
-            MIMC_ROUNDS,
-            &constants).is_ok());
+            statics,
+            &p_params).is_ok());
 
         assert!(verifier.verify(&proof, &pc_gens, &bp_gens).is_ok());
         let end = start.elapsed();
