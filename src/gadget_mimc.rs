@@ -12,8 +12,8 @@ use bulletproofs::r1cs::LinearCombination;
 
 use crate::r1cs_utils::{AllocatedScalar,constrain_lc_with_scalar};
 
-//pub const MIMC_ROUNDS: usize = 322;
-pub const MIMC_ROUNDS: usize = 10;
+pub const MIMC_ROUNDS: usize = 322;
+//pub const MIMC_ROUNDS: usize = 10;
 
 
 pub fn mimc(
@@ -99,7 +99,7 @@ mod tests {
         let pc_gens = PedersenGens::default();
         let bp_gens = BulletproofGens::new(2048, 1);
 
-        const SAMPLES: u32 = 10;
+        const SAMPLES: u32 = 1;
         let mut total_proving = Duration::new(0, 0);
         let mut total_verifying = Duration::new(0, 0);
 

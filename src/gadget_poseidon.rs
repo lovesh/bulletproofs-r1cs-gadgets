@@ -4,6 +4,7 @@ extern crate rand;
 extern crate curve25519_dalek;
 extern crate merlin;
 extern crate bulletproofs;
+//extern crate spock;
 
 use curve25519_dalek::scalar::Scalar;
 use bulletproofs::r1cs::{ConstraintSystem, R1CSError, R1CSProof, Variable, Prover, Verifier};
@@ -19,6 +20,8 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 use curve25519_dalek::ristretto::CompressedRistretto;
 
+use std::mem;
+use std::collections::HashMap;
 
 // TODO: Add serialization with serde
 pub struct PoseidonParams {
@@ -83,6 +86,29 @@ impl PoseidonParams {
         }
         mds*/
     }
+}
+
+/// Simplify linear combination by taking Variables common across terms and adding their corresponding scalars.
+/// Useful when linear combinations become large. Takes ownership of linear combination as this function is useful
+/// when memory is limited and the obvious action after this function call will be to free the memory held by the passed linear combination
+fn simplify_lc(lc: LinearCombination) -> LinearCombination {
+    // TODO: Move this code to the fork of bulletproofs
+    let mut vars: HashMap<Variable, Scalar> = HashMap::new();
+    let terms = lc.get_terms();
+    for (var, val) in terms {
+        if vars.contains_key(&var) {
+            let old_val = vars.get(&var).unwrap();
+            vars.insert(var, val + old_val);
+        } else {
+            vars.insert(var, val);
+        }
+    }
+
+    let mut new_lc_terms = vec![];
+    for (var, val) in vars {
+        new_lc_terms.push((var, val));
+    }
+    new_lc_terms.iter().collect()
 }
 
 pub enum SboxType {
@@ -322,7 +348,8 @@ pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
         apply_linear_layer(width, sbox_outputs, &mut next_input_vars, &params.MDS_matrix);
 
         for i in 0..width {
-            input_vars[i] = next_input_vars[i].to_owned();
+            // replace input_vars with next_input_vars
+            input_vars[i] = next_input_vars.remove(0);
         }
     }
 
@@ -355,7 +382,8 @@ pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
         apply_linear_layer(width, sbox_outputs, &mut next_input_vars, &params.MDS_matrix);
 
         for i in 0..width {
-            input_vars[i] = next_input_vars[i].to_owned();
+            // replace input_vars with simplified next_input_vars
+            input_vars[i] = simplify_lc(next_input_vars.remove(0));
         }
     }
 
@@ -381,7 +409,8 @@ pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
         apply_linear_layer(width, sbox_outputs, &mut next_input_vars, &params.MDS_matrix);
 
         for i in 0..width {
-            input_vars[i] = next_input_vars[i].to_owned();
+            // replace input_vars with next_input_vars
+            input_vars[i] = next_input_vars.remove(0);
         }
     }
 
@@ -579,7 +608,7 @@ mod tests {
         let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
         let width = 6;
         let (full_b, full_e) = (4, 4);
-        let partial_rounds = 6;
+        let partial_rounds = 140;
         let s_params = PoseidonParams::new(width, full_b, full_e, partial_rounds);
         let total_rounds = full_b + full_e + partial_rounds;
 

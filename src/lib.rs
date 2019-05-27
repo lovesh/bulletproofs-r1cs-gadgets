@@ -6,6 +6,7 @@ extern crate merlin;
 
 pub mod scalar_utils;
 pub mod r1cs_utils;
+pub mod factors;
 pub mod gadget_not_equals;
 pub mod gadget_bound_check;
 pub mod gadget_range_proof;
