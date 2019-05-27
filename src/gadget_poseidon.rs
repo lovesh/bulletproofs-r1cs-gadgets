@@ -642,6 +642,7 @@ mod tests {
 
             let statics = allocate_statics_for_prover(&mut prover, width);
 
+            let start = Instant::now();
             assert!(Poseidon_hash_2_gadget(&mut prover,
                                            l_alloc,
                                            r_alloc,
@@ -653,6 +654,10 @@ mod tests {
             println!("For Poseidon hash rounds {}, no of constraints is {}", total_rounds, &prover.num_constraints());
 
             let proof = prover.prove(&bp_gens).unwrap();
+
+            let end = start.elapsed();
+
+            println!("Proving time is {:?}", end);
             (proof, comms)
         };
 
@@ -673,6 +678,8 @@ mod tests {
         };
 
         let statics = allocate_statics_for_verifier(&mut verifier, width, &pc_gens);
+
+        let start = Instant::now();
         assert!(Poseidon_hash_2_gadget(&mut verifier,
                                        l_alloc,
                                        r_alloc,
@@ -682,6 +689,9 @@ mod tests {
                                        &expected_output).is_ok());
 
         assert!(verifier.verify(&proof, &pc_gens, &bp_gens).is_ok());
+        let end = start.elapsed();
+
+        println!("Verification time is {:?}", end);
     }
 
     #[test]
