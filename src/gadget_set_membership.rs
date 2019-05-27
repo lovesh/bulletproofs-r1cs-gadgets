@@ -7,6 +7,8 @@ use curve25519_dalek::scalar::Scalar;
 use bulletproofs::{BulletproofGens, PedersenGens};
 use curve25519_dalek::ristretto::CompressedRistretto;
 use bulletproofs::r1cs::LinearCombination;
+use merlin::Transcript;
+use rand::{RngCore, CryptoRng};
 
 use crate::r1cs_utils::{AllocatedQuantity, constrain_lc_with_scalar};
 
@@ -84,6 +86,90 @@ pub fn vector_product_gadget<CS: ConstraintSystem>(
 }
 
 
+/// Allocate a bitmap for the `set` with 1 as the index of `value`, 0 otherwise. Then commit to values of bitmap
+/// and prove that each element is either 0 or 1, sum of elements of this bitmap is 1 (as there is only 1 element)
+/// and the relation set[i] * bitmap[i] = bitmap[i] * value.
+/// Taken from https://github.com/HarryR/ethsnarks/blob/master/src/gadgets/one_of_n.hpp
+pub fn gen_proof_of_set_membership<R: RngCore + CryptoRng>(value: u64, randomness: Option<Scalar>, set: &[u64],
+                                                        mut rng: &mut R, transcript_label: &'static [u8],
+                                                        pc_gens: &PedersenGens, bp_gens: &BulletproofGens) -> Result<(R1CSProof, Vec<CompressedRistretto>), R1CSError> {
+    let set_length = set.len();
+    // Set all indices to 0 except the one where `value` is
+    let bit_map: Vec<u64> = set.iter().map( | elem | {
+        if *elem == value { 1 } else { 0 }
+    }).collect();
+
+    let mut comms = vec![];
+
+    let mut prover_transcript = Transcript::new(transcript_label);
+    let mut rng = rand::thread_rng();
+
+    let mut prover = Prover::new(&pc_gens, &mut prover_transcript);
+
+    let mut bit_vars = vec![];
+    for b in bit_map {
+        let (com, var) = prover.commit(b.into(), Scalar::random(&mut rng));
+        let quantity = AllocatedQuantity {
+            variable: var,
+            assignment: Some(b),
+        };
+        assert!(bit_gadget(&mut prover, quantity).is_ok());
+        comms.push(com);
+        bit_vars.push(quantity);
+    }
+
+    // The bit vector sum should be 1
+    assert!(vector_sum_gadget(&mut prover, &bit_vars, 1).is_ok());
+
+    let (com_value, var_value) = prover.commit(value.into(), randomness.unwrap_or_else(|| Scalar::random(&mut rng)));
+    let quantity_value = AllocatedQuantity {
+        variable: var_value,
+        assignment: Some(value),
+    };
+    assert!(vector_product_gadget(&mut prover, &set, &bit_vars, &quantity_value).is_ok());
+    comms.push(com_value);
+
+//            println!("For set size {}, no of constraints is {}", &set_length, &prover.num_constraints());
+//            println!("Prover commitments {:?}", &comms);
+    let proof = prover.prove(&bp_gens)?;
+
+    Ok((proof, comms))
+}
+
+pub fn verify_proof_of_set_membership(set: &[u64],
+                                   proof: R1CSProof, commitments: Vec<CompressedRistretto>,
+                                   transcript_label: &'static [u8], pc_gens: &PedersenGens, bp_gens: &BulletproofGens) -> Result<(), R1CSError> {
+    let set_length = set.len();
+
+    let mut verifier_transcript = Transcript::new(transcript_label);
+    let mut verifier = Verifier::new(&mut verifier_transcript);
+    let mut bit_vars = vec![];
+
+    for i in 0..set_length {
+        let var = verifier.commit(commitments[i]);
+        let quantity = AllocatedQuantity {
+            variable: var,
+            assignment: None,
+        };
+        assert!(bit_gadget(&mut verifier, quantity).is_ok());
+        bit_vars.push(quantity);
+    }
+
+    assert!(vector_sum_gadget(&mut verifier, &bit_vars, 1).is_ok());
+
+    let var_val = verifier.commit(commitments[set_length]);
+    let quantity_value = AllocatedQuantity {
+        variable: var_val,
+        assignment: None,
+    };
+
+    assert!(vector_product_gadget(&mut verifier, &set, &bit_vars, &quantity_value).is_ok());
+
+//        println!("Verifier commitments {:?}", &commitments);
+
+    verifier.verify(&proof, &pc_gens, &bp_gens)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,90 +179,14 @@ mod tests {
     fn set_membership_check_gadget() {
         let set: Vec<u64> = vec![2, 3, 5, 6, 8, 20, 25];
         let value = 3u64;
+        let mut rng = rand::thread_rng();
 
-        assert!(set_membership_check_helper(value, set).is_ok());
-    }
-
-    // Allocate a bitmap for the `set` with 1 as the index of `value`, 0 otherwise. Then commit to values of bitmap
-    // and prove that each element is either 0 or 1, sum of elements of this bitmap is 1 (as there is only 1 element)
-    // and the relation set[i] * bitmap[i] = bitmap[i] * value.
-    // Taken from https://github.com/HarryR/ethsnarks/blob/master/src/gadgets/one_of_n.hpp
-    fn set_membership_check_helper(value: u64, set: Vec<u64>) -> Result<(), R1CSError> {
         let pc_gens = PedersenGens::default();
         let bp_gens = BulletproofGens::new(128, 1);
-
-        let set_length = set.len();
-
-        let (proof, commitments) = {
-            // Set all indices to 0 except the one where `value` is
-            let bit_map: Vec<u64> = set.iter().map( | elem | {
-                if *elem == value { 1 } else { 0 }
-            }).collect();
-
-            let mut comms = vec![];
-
-            let mut prover_transcript = Transcript::new(b"SetMemebershipTest");
-            let mut rng = rand::thread_rng();
-
-            let mut prover = Prover::new(&pc_gens, &mut prover_transcript);
-
-            let mut bit_vars = vec![];
-            for b in bit_map {
-                let (com, var) = prover.commit(b.into(), Scalar::random(&mut rng));
-                let quantity = AllocatedQuantity {
-                    variable: var,
-                    assignment: Some(b),
-                };
-                assert!(bit_gadget(&mut prover, quantity).is_ok());
-                comms.push(com);
-                bit_vars.push(quantity);
-            }
-
-            // The bit vector sum should be 1
-            assert!(vector_sum_gadget(&mut prover, &bit_vars, 1).is_ok());
-
-            let (com_value, var_value) = prover.commit(value.into(), Scalar::random(&mut rng));
-            let quantity_value = AllocatedQuantity {
-                variable: var_value,
-                assignment: Some(value),
-            };
-            assert!(vector_product_gadget(&mut prover, &set, &bit_vars, &quantity_value).is_ok());
-            comms.push(com_value);
-
-//            println!("For set size {}, no of constraints is {}", &set_length, &prover.num_constraints());
-//            println!("Prover commitments {:?}", &comms);
-            let proof = prover.prove(&bp_gens)?;
-
-            (proof, comms)
-        };
-
-        let mut verifier_transcript = Transcript::new(b"SetMemebershipTest");
-        let mut verifier = Verifier::new(&mut verifier_transcript);
-        let mut bit_vars = vec![];
-
-        for i in 0..set_length {
-            let var = verifier.commit(commitments[i]);
-            let quantity = AllocatedQuantity {
-                variable: var,
-                assignment: None,
-            };
-            assert!(bit_gadget(&mut verifier, quantity).is_ok());
-            bit_vars.push(quantity);
-        }
-
-        assert!(vector_sum_gadget(&mut verifier, &bit_vars, 1).is_ok());
-
-        let var_val = verifier.commit(commitments[set_length]);
-        let quantity_value = AllocatedQuantity {
-            variable: var_val,
-            assignment: None,
-        };
-
-        assert!(vector_product_gadget(&mut verifier, &set, &bit_vars, &quantity_value).is_ok());
-
-//        println!("Verifier commitments {:?}", &commitments);
-
-        Ok(verifier.verify(&proof, &pc_gens, &bp_gens)?)
+        let label= b"SetMemebershipTest";
+        let randomness = Some(Scalar::random(&mut rng));
+        let (proof, commitments) = gen_proof_of_set_membership(value, randomness, &set, &mut rng, label, &pc_gens, &bp_gens).unwrap();
+        verify_proof_of_set_membership(&set, proof, commitments, label, &pc_gens, &bp_gens).unwrap();
     }
 }
 
