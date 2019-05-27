@@ -53,8 +53,8 @@ impl PoseidonParams {
 
     // TODO: Write logic to generate correct round keys.
     fn gen_round_keys(width: usize, total_rounds: usize) -> Vec<Scalar> {
-        let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
         let cap = total_rounds * width;
+        let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
         vec![Scalar::random(&mut test_rng); cap]
         /*if ROUND_CONSTS.len() < cap {
             panic!("Not enough round constants, need {}, found {}", cap, ROUND_CONSTS.len());
@@ -62,7 +62,11 @@ impl PoseidonParams {
         let mut rc = vec![];
         for i in 0..cap {
             // TODO: Remove unwrap, handle error
-            rc.push(get_scalar_from_hex(ROUND_CONSTS[i]).unwrap());
+            let c = get_scalar_from_hex(ROUND_CONSTS[i]).unwrap();
+            if c == Scalar::zero() {
+                println!("Found 0 round constant")
+            }
+            rc.push(c);
         }
         rc*/
     }
@@ -81,7 +85,10 @@ impl PoseidonParams {
             }
             for j in 0..width {
                 // TODO: Remove unwrap, handle error
-                mds[i][j] = get_scalar_from_hex(MDS_ENTRIES[i][j]).unwrap()
+                mds[i][j] = get_scalar_from_hex(MDS_ENTRIES[i][j]).unwrap();
+                if mds[i][j] == Scalar::zero() {
+                    println!("Found 0 MDS entry")
+                }
             }
         }
         mds*/
@@ -179,7 +186,7 @@ fn synthesize_inverse_sbox<CS: ConstraintSystem>(
         }
     )?;
 
-    // Constrain product of ``inp_plus_const` and its inverse to be 1.
+    // Constrain product of `inp_plus_const` and its inverse to be 1.
     constrain_lc_with_scalar::<CS>(cs, var_o.unwrap().into(), &Scalar::one());
 
     Ok(var_r)
@@ -282,18 +289,19 @@ fn Poseidon_permutation(
 
 // Choice is arbitrary
 pub const PADDING_CONST: u64 = 101;
+pub const ZERO_CONST: u64 = 0;
 
 pub fn Poseidon_hash_2(xl: Scalar, xr: Scalar, params: &PoseidonParams, sbox: &SboxType) -> Scalar {
     // Only 2 inputs to the permutation are set to the input of this hash function,
     // one is set to the padding constant and rest are 0. Always keep the 1st input as 0
 
     let input = vec![
-        Scalar::zero(),
+        Scalar::from(ZERO_CONST),
         xl,
         xr,
         Scalar::from(PADDING_CONST),
-        Scalar::zero(),
-        Scalar::zero()
+        Scalar::from(ZERO_CONST),
+        Scalar::from(ZERO_CONST)
     ];
 
     // Never take the first input
@@ -496,10 +504,10 @@ pub fn allocate_statics_for_prover(prover: &mut Prover, width: usize) -> Vec<All
 
     // Commit to 0 with randomness 0 for the rest of the elements of width
     for _ in 3..width {
-        let (_, var) = prover.commit(Scalar::zero(), Scalar::zero());
+        let (_, var) = prover.commit(Scalar::from(ZERO_CONST), Scalar::zero());
         statics.push(AllocatedScalar {
             variable: var,
-            assignment: Some(Scalar::zero()),
+            assignment: Some(Scalar::from(ZERO_CONST)),
         });
     }
     statics
@@ -517,7 +525,7 @@ pub fn allocate_statics_for_verifier(verifier: &mut Verifier, width: usize, pc_g
     });
 
     // Commitment to 0 with blinding as 0
-    let zero_comm = pc_gens.commit(Scalar::zero(), Scalar::zero()).compress();
+    let zero_comm = pc_gens.commit(Scalar::from(ZERO_CONST), Scalar::zero()).compress();
 
     for i in 3..width {
         let v = verifier.commit(zero_comm.clone());
@@ -539,7 +547,7 @@ mod tests {
         let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
         let width = 6;
         let (full_b, full_e) = (4, 4);
-        let partial_rounds = 140;
+        let partial_rounds = 6;
         let s_params = PoseidonParams::new(width, full_b, full_e, partial_rounds);
         let total_rounds = full_b + full_e + partial_rounds;
 
@@ -606,15 +614,22 @@ mod tests {
 
     fn poseidon_hash(sbox_type: &SboxType, transcript_label: &'static [u8]) {
         let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
+        //let mut test_rng = rand::thread_rng();
         let width = 6;
         let (full_b, full_e) = (4, 4);
-        let partial_rounds = 140;
+        let partial_rounds = 6;
         let s_params = PoseidonParams::new(width, full_b, full_e, partial_rounds);
         let total_rounds = full_b + full_e + partial_rounds;
 
         let xl = Scalar::random(&mut test_rng);
         let xr = Scalar::random(&mut test_rng);
         let expected_output = Poseidon_hash_2(xl, xr, &s_params, sbox_type);
+
+        println!("Input:\n");
+        println!("xl={:?}", &xl);
+        println!("xr={:?}", &xr);
+        println!("Expected output:\n");
+        println!("{:?}", &expected_output);
 
         let pc_gens = PedersenGens::default();
         let bp_gens = BulletproofGens::new(2048, 1);
