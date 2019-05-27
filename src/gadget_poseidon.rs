@@ -54,9 +54,9 @@ impl PoseidonParams {
     // TODO: Write logic to generate correct round keys.
     fn gen_round_keys(width: usize, total_rounds: usize) -> Vec<Scalar> {
         let cap = total_rounds * width;
-        let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
-        vec![Scalar::random(&mut test_rng); cap]
-        /*if ROUND_CONSTS.len() < cap {
+        /*let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
+        vec![Scalar::random(&mut test_rng); cap]*/
+        if ROUND_CONSTS.len() < cap {
             panic!("Not enough round constants, need {}, found {}", cap, ROUND_CONSTS.len());
         }
         let mut rc = vec![];
@@ -68,14 +68,14 @@ impl PoseidonParams {
             }
             rc.push(c);
         }
-        rc*/
+        rc
     }
 
     // TODO: Write logic to generate correct MDS matrix. Currently loading hardcoded constants.
     fn gen_MDS_matrix(width: usize) -> Vec<Vec<Scalar>> {
-        let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
-        vec![vec![Scalar::random(&mut test_rng); width]; width]
-        /*if MDS_ENTRIES.len() != width {
+        /*let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
+        vec![vec![Scalar::random(&mut test_rng); width]; width]*/
+        if MDS_ENTRIES.len() != width {
             panic!("Incorrect width, only width {} is supported now", width);
         }
         let mut mds: Vec<Vec<Scalar>> = vec![vec![Scalar::zero(); width]; width];
@@ -91,7 +91,7 @@ impl PoseidonParams {
                 }
             }
         }
-        mds*/
+        mds
     }
 }
 
@@ -495,6 +495,12 @@ pub fn Poseidon_hash_2_gadget<'a, CS: ConstraintSystem>(
 /// Allocate padding constant and zeroes for Prover
 pub fn allocate_statics_for_prover(prover: &mut Prover, width: usize) -> Vec<AllocatedScalar> {
     let mut statics = vec![];
+    let (_, var) = prover.commit(Scalar::from(ZERO_CONST), Scalar::zero());
+    statics.push(AllocatedScalar {
+        variable: var,
+        assignment: Some(Scalar::from(ZERO_CONST)),
+    });
+
     // Commitment to PADDING_CONST with blinding as 0
     let (_, var) = prover.commit(Scalar::from(PADDING_CONST), Scalar::zero());
     statics.push(AllocatedScalar {
@@ -503,7 +509,7 @@ pub fn allocate_statics_for_prover(prover: &mut Prover, width: usize) -> Vec<All
     });
 
     // Commit to 0 with randomness 0 for the rest of the elements of width
-    for _ in 3..width {
+    for _ in 0..width-4 {
         let (_, var) = prover.commit(Scalar::from(ZERO_CONST), Scalar::zero());
         statics.push(AllocatedScalar {
             variable: var,
@@ -518,16 +524,22 @@ pub fn allocate_statics_for_verifier(verifier: &mut Verifier, width: usize, pc_g
     let mut statics = vec![];
     // Commitment to PADDING_CONST with blinding as 0
     let pad_comm = pc_gens.commit(Scalar::from(PADDING_CONST), Scalar::zero()).compress();
-    let v = verifier.commit(pad_comm);
+
+    // Commitment to 0 with blinding as 0
+    let zero_comm = pc_gens.commit(Scalar::from(ZERO_CONST), Scalar::zero()).compress();
+
+    let v = verifier.commit(zero_comm.clone());
     statics.push(AllocatedScalar {
         variable: v,
         assignment: None,
     });
 
-    // Commitment to 0 with blinding as 0
-    let zero_comm = pc_gens.commit(Scalar::from(ZERO_CONST), Scalar::zero()).compress();
-
-    for i in 3..width {
+    let v = verifier.commit(pad_comm);
+    statics.push(AllocatedScalar {
+        variable: v,
+        assignment: None,
+    });
+    for _ in 0..width-4 {
         let v = verifier.commit(zero_comm.clone());
         statics.push(AllocatedScalar {
             variable: v,
@@ -547,7 +559,7 @@ mod tests {
         let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
         let width = 6;
         let (full_b, full_e) = (4, 4);
-        let partial_rounds = 6;
+        let partial_rounds = 140;
         let s_params = PoseidonParams::new(width, full_b, full_e, partial_rounds);
         let total_rounds = full_b + full_e + partial_rounds;
 
@@ -617,7 +629,7 @@ mod tests {
         //let mut test_rng = rand::thread_rng();
         let width = 6;
         let (full_b, full_e) = (4, 4);
-        let partial_rounds = 6;
+        let partial_rounds = 140;
         let s_params = PoseidonParams::new(width, full_b, full_e, partial_rounds);
         let total_rounds = full_b + full_e + partial_rounds;
 
@@ -625,11 +637,11 @@ mod tests {
         let xr = Scalar::random(&mut test_rng);
         let expected_output = Poseidon_hash_2(xl, xr, &s_params, sbox_type);
 
-        println!("Input:\n");
+        /*println!("Input:\n");
         println!("xl={:?}", &xl);
         println!("xr={:?}", &xr);
         println!("Expected output:\n");
-        println!("{:?}", &expected_output);
+        println!("{:?}", &expected_output);*/
 
         let pc_gens = PedersenGens::default();
         let bp_gens = BulletproofGens::new(2048, 1);
