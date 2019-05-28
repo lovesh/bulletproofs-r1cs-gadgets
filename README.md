@@ -15,9 +15,10 @@ The parameters are generated using a sage worksheet supplied by Dmitry Khovratov
 
 ## Building
 This project uses a slightly modified implementation of Bulletproofs's `develop` branch. The difference is addition of the method `num_constraints` to `Prover` 
-to return the number of constraints and addition of 2 new methods in constraint system   
-1. `evaluate_lc`: to evaluate an linear constraint 
-2. `allocate_single`: to return output variable when allocating right multiplier.   
+to return the number of constraints and addition of some new methods in constraint system and linear combinations   
+1. `evaluate_lc`: to evaluate a linear constraint 
+2. `allocate_single`: to return output variable when allocating right multiplier.
+3. `simplify`: to simplify a linear combination, eg. simplify a linear combination like `2*x + 3*y + 4*x` to `6*x + 3*y`.    
 
 Use the nightly compiler to run tests like   
 `cargo +nightly test --all-features`

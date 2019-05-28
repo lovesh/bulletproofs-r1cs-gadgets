@@ -63,9 +63,6 @@ impl PoseidonParams {
         for i in 0..cap {
             // TODO: Remove unwrap, handle error
             let c = get_scalar_from_hex(ROUND_CONSTS[i]).unwrap();
-            if c == Scalar::zero() {
-                println!("Found 0 round constant")
-            }
             rc.push(c);
         }
         rc
@@ -86,12 +83,13 @@ impl PoseidonParams {
             for j in 0..width {
                 // TODO: Remove unwrap, handle error
                 mds[i][j] = get_scalar_from_hex(MDS_ENTRIES[i][j]).unwrap();
-                if mds[i][j] == Scalar::zero() {
-                    println!("Found 0 MDS entry")
-                }
             }
         }
         mds
+    }
+
+    pub fn get_total_rounds(&self) -> usize {
+        self.full_rounds_beginning + self.partial_rounds + self.full_rounds_end
     }
 }
 
@@ -103,12 +101,7 @@ fn simplify_lc(lc: LinearCombination) -> LinearCombination {
     let mut vars: HashMap<Variable, Scalar> = HashMap::new();
     let terms = lc.get_terms();
     for (var, val) in terms {
-        if vars.contains_key(&var) {
-            let old_val = vars.get(&var).unwrap();
-            vars.insert(var, val + old_val);
-        } else {
-            vars.insert(var, val);
-        }
+        *vars.entry(var).or_insert(Scalar::zero()) += val;
     }
 
     let mut new_lc_terms = vec![];
@@ -138,59 +131,60 @@ impl SboxType {
         round_key: Scalar
     ) -> Result<Variable, R1CSError> {
         match self {
-            SboxType::Cube => synthesize_cube_sbox(cs, input_var, round_key),
-            SboxType::Inverse => synthesize_inverse_sbox(cs, input_var, round_key),
+            SboxType::Cube => Self::synthesize_cube_sbox(cs, input_var, round_key),
+            SboxType::Inverse => Self::synthesize_inverse_sbox(cs, input_var, round_key),
             _ => Err(R1CSError::GadgetError {description: String::from("Unknown Sbox type")})
         }
     }
+
+    // Allocate variables in circuit and enforce constraints when Sbox as cube
+    fn synthesize_cube_sbox<CS: ConstraintSystem>(
+        cs: &mut CS,
+        input_var: LinearCombination,
+        round_key: Scalar
+    ) -> Result<Variable, R1CSError> {
+        let inp_plus_const: LinearCombination = input_var + round_key;
+        let (i, _, sqr) = cs.multiply(inp_plus_const.clone(), inp_plus_const);
+        let (_, _, cube) = cs.multiply(sqr.into(), i.into());
+        Ok(cube)
+    }
+
+    // Allocate variables in circuit and enforce constraints when Sbox as inverse
+    fn synthesize_inverse_sbox<CS: ConstraintSystem>(
+        cs: &mut CS,
+        input_var: LinearCombination,
+        round_key: Scalar
+    ) -> Result<Variable, R1CSError> {
+        let inp_plus_const: LinearCombination = input_var + round_key;
+
+        let val_l = cs.evaluate_lc(&inp_plus_const);
+        let val_r = val_l.map(|l| {
+            l.invert()
+        });
+
+        let (var_l, _) = cs.allocate_single(val_l)?;
+        let (var_r, var_o) = cs.allocate_single(val_r)?;
+
+        // Ensure `inp_plus_const` is not zero
+        is_nonzero_gadget(
+            cs,
+            AllocatedScalar {
+                variable: var_l,
+                assignment: val_l
+            },
+            AllocatedScalar {
+                variable: var_r,
+                assignment: val_r
+            }
+        )?;
+
+        // Constrain product of `inp_plus_const` and its inverse to be 1.
+        constrain_lc_with_scalar::<CS>(cs, var_o.unwrap().into(), &Scalar::one());
+
+        Ok(var_r)
+    }
 }
 
-// Allocate variables in circuit and enforce constraints when Sbox as cube
-fn synthesize_cube_sbox<CS: ConstraintSystem>(
-    cs: &mut CS,
-    input_var: LinearCombination,
-    round_key: Scalar
-) -> Result<Variable, R1CSError> {
-    let inp_plus_const: LinearCombination = input_var + round_key;
-    let (i, _, sqr) = cs.multiply(inp_plus_const.clone(), inp_plus_const);
-    let (_, _, cube) = cs.multiply(sqr.into(), i.into());
-    Ok(cube)
-}
-
-// Allocate variables in circuit and enforce constraints when Sbox as inverse
-fn synthesize_inverse_sbox<CS: ConstraintSystem>(
-    cs: &mut CS,
-    input_var: LinearCombination,
-    round_key: Scalar
-) -> Result<Variable, R1CSError> {
-    let inp_plus_const: LinearCombination = input_var + round_key;
-
-    let val_l = cs.evaluate_lc(&inp_plus_const);
-    let val_r = val_l.map(|l| {
-        l.invert()
-    });
-
-    let (var_l, _) = cs.allocate_single(val_l)?;
-    let (var_r, var_o) = cs.allocate_single(val_r)?;
-
-    // Ensure `inp_plus_const` is not zero
-    is_nonzero_gadget(
-        cs,
-        AllocatedScalar {
-            variable: var_l,
-            assignment: val_l
-        },
-        AllocatedScalar {
-            variable: var_r,
-            assignment: val_r
-        }
-    )?;
-
-    // Constrain product of `inp_plus_const` and its inverse to be 1.
-    constrain_lc_with_scalar::<CS>(cs, var_o.unwrap().into(), &Scalar::one());
-
-    Ok(var_r)
-}
 
 fn Poseidon_permutation(
     input: &[Scalar],
@@ -283,29 +277,6 @@ fn Poseidon_permutation(
 
     // Finally the current_state becomes the output
     current_state
-}
-
-/// 2:1 (2 inputs, 1 output) hash from the permutation by passing the first input as zero, 2 of the next 4 as non-zero, a padding constant and rest zero. Choose one of the outputs.
-
-// Choice is arbitrary
-pub const PADDING_CONST: u64 = 101;
-pub const ZERO_CONST: u64 = 0;
-
-pub fn Poseidon_hash_2(xl: Scalar, xr: Scalar, params: &PoseidonParams, sbox: &SboxType) -> Scalar {
-    // Only 2 inputs to the permutation are set to the input of this hash function,
-    // one is set to the padding constant and rest are 0. Always keep the 1st input as 0
-
-    let input = vec![
-        Scalar::from(ZERO_CONST),
-        xl,
-        xr,
-        Scalar::from(PADDING_CONST),
-        Scalar::from(ZERO_CONST),
-        Scalar::from(ZERO_CONST)
-    ];
-
-    // Never take the first input
-    Poseidon_permutation(&input, params, sbox)[1]
 }
 
 pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
@@ -448,6 +419,29 @@ pub fn Poseidon_permutation_gadget<'a, CS: ConstraintSystem>(
     Ok(())
 }
 
+/// 2:1 (2 inputs, 1 output) hash from the permutation by passing the first input as zero, 2 of the next 4 as non-zero, a padding constant and rest zero. Choose one of the outputs.
+
+// Choice is arbitrary
+pub const PADDING_CONST: u64 = 101;
+pub const ZERO_CONST: u64 = 0;
+
+pub fn Poseidon_hash_2(xl: Scalar, xr: Scalar, params: &PoseidonParams, sbox: &SboxType) -> Scalar {
+    // Only 2 inputs to the permutation are set to the input of this hash function,
+    // one is set to the padding constant and rest are 0. Always keep the 1st input as 0
+
+    let input = vec![
+        Scalar::from(ZERO_CONST),
+        xl,
+        xr,
+        Scalar::from(PADDING_CONST),
+        Scalar::from(ZERO_CONST),
+        Scalar::from(ZERO_CONST)
+    ];
+
+    // Never take the first input
+    Poseidon_permutation(&input, params, sbox)[1]
+}
+
 pub fn Poseidon_hash_2_constraints<'a, CS: ConstraintSystem>(
     cs: &mut CS,
     xl: LinearCombination,
@@ -555,14 +549,19 @@ mod tests {
     // For benchmarking
     use std::time::{Duration, Instant};
 
-    fn poseidon_perm(sbox_type: &SboxType, transcript_label: &'static [u8]) {
-        let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
+    fn get_poseidon_params() -> PoseidonParams{
         let width = 6;
         let (full_b, full_e) = (4, 4);
         let partial_rounds = 140;
-        let s_params = PoseidonParams::new(width, full_b, full_e, partial_rounds);
-        let total_rounds = full_b + full_e + partial_rounds;
+        PoseidonParams::new(width, full_b, full_e, partial_rounds)
+    }
 
+    fn poseidon_perm(sbox_type: &SboxType, transcript_label: &'static [u8]) {
+        let s_params = get_poseidon_params();
+        let width = s_params.width;
+        let total_rounds = s_params.get_total_rounds();
+
+        let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
         let input = (0..width).map(|_| Scalar::random(&mut test_rng)).collect::<Vec<_>>();
         let expected_output = Poseidon_permutation(&input, &s_params, sbox_type);
 
@@ -624,15 +623,12 @@ mod tests {
         assert!(verifier.verify(&proof, &pc_gens, &bp_gens).is_ok());
     }
 
-    fn poseidon_hash(sbox_type: &SboxType, transcript_label: &'static [u8]) {
-        let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
-        //let mut test_rng = rand::thread_rng();
-        let width = 6;
-        let (full_b, full_e) = (4, 4);
-        let partial_rounds = 140;
-        let s_params = PoseidonParams::new(width, full_b, full_e, partial_rounds);
-        let total_rounds = full_b + full_e + partial_rounds;
+    fn poseidon_hash_2(sbox_type: &SboxType, transcript_label: &'static [u8]) {
+        let s_params = get_poseidon_params();
+        let width = s_params.width;
+        let total_rounds = s_params.get_total_rounds();
 
+        let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
         let xl = Scalar::random(&mut test_rng);
         let xr = Scalar::random(&mut test_rng);
         let expected_output = Poseidon_hash_2(xl, xr, &s_params, sbox_type);
@@ -732,12 +728,12 @@ mod tests {
     }
 
     #[test]
-    fn test_poseidon_hash_cube_sbox() {
-        poseidon_hash(&SboxType::Cube, b"Poseidon_hash_cube");
+    fn test_poseidon_hash_2_cube_sbox() {
+        poseidon_hash_2(&SboxType::Cube, b"Poseidon_hash_cube");
     }
 
     #[test]
-    fn test_poseidon_hash_inverse_sbox() {
-        poseidon_hash(&SboxType::Inverse, b"Poseidon_hash_inverse");
+    fn test_poseidon_hash_2_inverse_sbox() {
+        poseidon_hash_2(&SboxType::Inverse, b"Poseidon_hash_inverse");
     }
 }
