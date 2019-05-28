@@ -438,7 +438,7 @@ pub fn Poseidon_hash_2(xl: Scalar, xr: Scalar, params: &PoseidonParams, sbox: &S
         Scalar::from(ZERO_CONST)
     ];
 
-    // Never take the first input
+    // Never take the first output
     Poseidon_permutation(&input, params, sbox)[1]
 }
 
@@ -485,9 +485,72 @@ pub fn Poseidon_hash_2_gadget<'a, CS: ConstraintSystem>(
     Ok(())
 }
 
+pub fn Poseidon_hash_4(inputs: [Scalar; 4], params: &PoseidonParams, sbox: &SboxType) -> Scalar {
+    // Only 4 inputs to the permutation are set to the input of this hash function,
+    // one is set to the padding constant and one is set to 0. Always keep the 1st input as 0
+
+    let input = vec![
+        Scalar::from(ZERO_CONST),
+        inputs[0],
+        inputs[1],
+        inputs[2],
+        inputs[3],
+        Scalar::from(PADDING_CONST)
+    ];
+
+    // Never take the first output
+    Poseidon_permutation(&input, params, sbox)[1]
+}
+
+pub fn Poseidon_hash_4_constraints<'a, CS: ConstraintSystem>(
+    cs: &mut CS,
+    input: [LinearCombination; 4],
+    statics: Vec<LinearCombination>,
+    params: &'a PoseidonParams,
+    sbox_type: &SboxType,
+) -> Result<LinearCombination, R1CSError> {
+    let width = params.width;
+    // Only 4 inputs to the permutation are set to the input of this hash function.
+    assert_eq!(statics.len(), width-4);
+
+    // Always keep the 1st input as 0
+    let mut inputs = vec![statics[0].to_owned()];
+    inputs.push(input[0].clone());
+    inputs.push(input[1].clone());
+    inputs.push(input[2].clone());
+    inputs.push(input[3].clone());
+
+    // statics correspond to committed variables with values as PADDING_CONST and 0s and randomness as 0
+    for i in 1..statics.len() {
+        inputs.push(statics[i].to_owned());
+    }
+    let permutation_output = Poseidon_permutation_constraints::<CS>(cs, inputs, params, sbox_type)?;
+    Ok(permutation_output[1].to_owned())
+}
+
+pub fn Poseidon_hash_4_gadget<'a, CS: ConstraintSystem>(
+    cs: &mut CS,
+    input: Vec<AllocatedScalar>,
+    statics: Vec<AllocatedScalar>,
+    params: &'a PoseidonParams,
+    sbox_type: &SboxType,
+    output: &Scalar
+) -> Result<(), R1CSError> {
+
+    let statics: Vec<LinearCombination> = statics.iter().map(|s| s.variable.into()).collect();
+    let mut input_arr: [LinearCombination; 4] = [LinearCombination::default(), LinearCombination::default(), LinearCombination::default(), LinearCombination::default()];
+    for i in 0..input.len() {
+        input_arr[i] = input[i].variable.into();
+    }
+    let hash = Poseidon_hash_4_constraints::<CS>(cs, input_arr, statics, params, sbox_type)?;
+
+    constrain_lc_with_scalar::<CS>(cs, hash, output);
+
+    Ok(())
+}
 
 /// Allocate padding constant and zeroes for Prover
-pub fn allocate_statics_for_prover(prover: &mut Prover, width: usize) -> Vec<AllocatedScalar> {
+pub fn allocate_statics_for_prover(prover: &mut Prover, num_statics: usize) -> Vec<AllocatedScalar> {
     let mut statics = vec![];
     let (_, var) = prover.commit(Scalar::from(ZERO_CONST), Scalar::zero());
     statics.push(AllocatedScalar {
@@ -503,7 +566,7 @@ pub fn allocate_statics_for_prover(prover: &mut Prover, width: usize) -> Vec<All
     });
 
     // Commit to 0 with randomness 0 for the rest of the elements of width
-    for _ in 0..width-4 {
+    for _ in 2..num_statics {
         let (_, var) = prover.commit(Scalar::from(ZERO_CONST), Scalar::zero());
         statics.push(AllocatedScalar {
             variable: var,
@@ -514,7 +577,7 @@ pub fn allocate_statics_for_prover(prover: &mut Prover, width: usize) -> Vec<All
 }
 
 /// Allocate padding constant and zeroes for Verifier
-pub fn allocate_statics_for_verifier(verifier: &mut Verifier, width: usize, pc_gens: &PedersenGens) -> Vec<AllocatedScalar> {
+pub fn allocate_statics_for_verifier(verifier: &mut Verifier, num_statics: usize, pc_gens: &PedersenGens) -> Vec<AllocatedScalar> {
     let mut statics = vec![];
     // Commitment to PADDING_CONST with blinding as 0
     let pad_comm = pc_gens.commit(Scalar::from(PADDING_CONST), Scalar::zero()).compress();
@@ -533,7 +596,7 @@ pub fn allocate_statics_for_verifier(verifier: &mut Verifier, width: usize, pc_g
         variable: v,
         assignment: None,
     });
-    for _ in 0..width-4 {
+    for _ in 2..num_statics {
         let v = verifier.commit(zero_comm.clone());
         statics.push(AllocatedScalar {
             variable: v,
@@ -548,6 +611,7 @@ mod tests {
     use super::*;
     // For benchmarking
     use std::time::{Duration, Instant};
+    use std::sync::atomic::Ordering::SeqCst;
 
     fn get_poseidon_params() -> PoseidonParams{
         let width = 6;
@@ -663,7 +727,8 @@ mod tests {
                 assignment: Some(xr),
             };
 
-            let statics = allocate_statics_for_prover(&mut prover, width);
+            let num_statics = 4;
+            let statics = allocate_statics_for_prover(&mut prover, num_statics);
 
             let start = Instant::now();
             assert!(Poseidon_hash_2_gadget(&mut prover,
@@ -674,7 +739,7 @@ mod tests {
                                            sbox_type,
                                            &expected_output).is_ok());
 
-            println!("For Poseidon hash rounds {}, no of constraints is {}", total_rounds, &prover.num_constraints());
+            println!("For Poseidon hash 2:1 rounds {}, no of constraints is {}", total_rounds, &prover.num_constraints());
 
             let proof = prover.prove(&bp_gens).unwrap();
 
@@ -700,12 +765,103 @@ mod tests {
             assignment: None,
         };
 
-        let statics = allocate_statics_for_verifier(&mut verifier, width, &pc_gens);
+        let num_statics = 4;
+        let statics = allocate_statics_for_verifier(&mut verifier, num_statics, &pc_gens);
 
         let start = Instant::now();
         assert!(Poseidon_hash_2_gadget(&mut verifier,
                                        l_alloc,
                                        r_alloc,
+                                       statics,
+                                       &s_params,
+                                       sbox_type,
+                                       &expected_output).is_ok());
+
+        assert!(verifier.verify(&proof, &pc_gens, &bp_gens).is_ok());
+        let end = start.elapsed();
+
+        println!("Verification time is {:?}", end);
+    }
+
+    fn poseidon_hash_4(sbox_type: &SboxType, transcript_label: &'static [u8]) {
+        let s_params = get_poseidon_params();
+        let width = s_params.width;
+        let total_rounds = s_params.get_total_rounds();
+
+        let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
+        let _input = (0..4).map(|_| Scalar::random(&mut test_rng)).collect::<Vec<_>>();
+        let mut input = [Scalar::zero(); 4];
+        input.copy_from_slice(_input.as_slice());
+        let expected_output = Poseidon_hash_4(input, &s_params, sbox_type);
+
+        /*println!("Input:\n");
+        println!("xl={:?}", &xl);
+        println!("xr={:?}", &xr);
+        println!("Expected output:\n");
+        println!("{:?}", &expected_output);*/
+
+        let pc_gens = PedersenGens::default();
+        let bp_gens = BulletproofGens::new(2048, 1);
+
+        println!("Proving");
+        let (proof, commitments) = {
+            let mut prover_transcript = Transcript::new(transcript_label);
+            let mut prover = Prover::new(&pc_gens, &mut prover_transcript);
+
+            let mut comms = vec![];
+            let mut allocs = vec![];
+
+            for inp in input.iter() {
+                let (com, var) = prover.commit(inp.clone(), Scalar::random(&mut test_rng));
+                comms.push(com);
+                allocs.push(AllocatedScalar {
+                    variable: var,
+                    assignment: Some(inp.clone()),
+                });
+            }
+
+            let num_statics = 2;
+            let statics = allocate_statics_for_prover(&mut prover, num_statics);
+
+            let start = Instant::now();
+            assert!(Poseidon_hash_4_gadget(&mut prover,
+                                           allocs,
+                                           statics,
+                                           &s_params,
+                                           sbox_type,
+                                           &expected_output).is_ok());
+
+            println!("For Poseidon hash 4:1 rounds {}, no of constraints is {}", total_rounds, &prover.num_constraints());
+
+            let proof = prover.prove(&bp_gens).unwrap();
+
+            let end = start.elapsed();
+
+            println!("Proving time is {:?}", end);
+            (proof, comms)
+        };
+
+        println!("Verifying");
+
+        let mut verifier_transcript = Transcript::new(transcript_label);
+        let mut verifier = Verifier::new(&mut verifier_transcript);
+        let mut allocs = vec![];
+        for com in commitments {
+            let v = verifier.commit(com);
+            allocs.push({
+                AllocatedScalar {
+                    variable: v,
+                    assignment: None,
+                }
+            });
+        }
+
+        let num_statics = 2;
+        let statics = allocate_statics_for_verifier(&mut verifier, num_statics, &pc_gens);
+
+        let start = Instant::now();
+        assert!(Poseidon_hash_4_gadget(&mut verifier,
+                                       allocs,
                                        statics,
                                        &s_params,
                                        sbox_type,
@@ -729,11 +885,21 @@ mod tests {
 
     #[test]
     fn test_poseidon_hash_2_cube_sbox() {
-        poseidon_hash_2(&SboxType::Cube, b"Poseidon_hash_cube");
+        poseidon_hash_2(&SboxType::Cube, b"Poseidon_hash_2_cube");
     }
 
     #[test]
     fn test_poseidon_hash_2_inverse_sbox() {
-        poseidon_hash_2(&SboxType::Inverse, b"Poseidon_hash_inverse");
+        poseidon_hash_2(&SboxType::Inverse, b"Poseidon_hash_2_inverse");
+    }
+
+    #[test]
+    fn test_poseidon_hash_4_cube_sbox() {
+        poseidon_hash_4(&SboxType::Cube, b"Poseidon_hash_2_cube");
+    }
+
+    #[test]
+    fn test_poseidon_hash_4_inverse_sbox() {
+        poseidon_hash_4(&SboxType::Inverse, b"Poseidon_hash_2_inverse");
     }
 }
