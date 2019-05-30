@@ -41,6 +41,7 @@ impl<'a> VanillaSparseMerkleTree_4<'a> {
         for i in 1..=depth {
             let prev = empty_tree_hashes[i-1];
             let input: [Scalar; 4] = [prev.clone(); 4];
+            // Hash all 4 children at once
             let new = Poseidon_hash_4(input.clone(), hash_params, &SboxType::Inverse);
             let key = new.to_bytes();
 
@@ -66,13 +67,17 @@ impl<'a> VanillaSparseMerkleTree_4<'a> {
         self.get(idx, &mut sidenodes_wrap);
         let mut sidenodes = sidenodes_wrap.unwrap();
 
+        // Convert leaf index to base 4
         let mut cur_idx = get_base_4_repr(&idx).to_vec();
         cur_idx.reverse();
         let mut cur_val = val.clone();
 
+        // Iterate over the base 4 digits
         for d in cur_idx {
             let mut side_elem = sidenodes.pop().unwrap().to_vec();
+            // Insert the value at the position determined by the base 4 digit
             side_elem.insert(d as usize, cur_val);
+
             let mut input: DBVal = [Scalar::zero(); 4];
             input.copy_from_slice(side_elem.as_slice());
             let h = Poseidon_hash_4(input.clone(), self.hash_params, &SboxType::Inverse);
