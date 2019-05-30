@@ -41,7 +41,7 @@ impl<'a> VanillaSparseMerkleTree_4<'a> {
         for i in 1..=depth {
             let prev = empty_tree_hashes[i-1];
             let input: [Scalar; 4] = [prev.clone(); 4];
-            let new = Poseidon_hash_4(input.clone(), hash_params, &SboxType::Cube);
+            let new = Poseidon_hash_4(input.clone(), hash_params, &SboxType::Inverse);
             let key = new.to_bytes();
 
             db.insert(key, input);
@@ -75,7 +75,7 @@ impl<'a> VanillaSparseMerkleTree_4<'a> {
             side_elem.insert(d as usize, cur_val);
             let mut input: DBVal = [Scalar::zero(); 4];
             input.copy_from_slice(side_elem.as_slice());
-            let h = Poseidon_hash_4(input.clone(), self.hash_params, &SboxType::Cube);
+            let h = Poseidon_hash_4(input.clone(), self.hash_params, &SboxType::Inverse);
             self.update_db_with_key_val(h, input);
             cur_val = h;
         }
@@ -131,7 +131,7 @@ impl<'a> VanillaSparseMerkleTree_4<'a> {
             p.insert(*d as usize, cur_val);
             let mut input: DBVal = [Scalar::zero(); 4];
             input.copy_from_slice(p.as_slice());
-            let h = Poseidon_hash_4(input.clone(), self.hash_params, &SboxType::Cube);
+            let h = Poseidon_hash_4(input.clone(), self.hash_params, &SboxType::Inverse);
             cur_val = h;
         }
 
@@ -289,7 +289,7 @@ pub fn vanilla_merkle_merkle_tree_4_verif_gadget<CS: ConstraintSystem>(
             let c3 = c3_1 + c3_2 + c3_3;
 
             let input: [LinearCombination; 4] = [c0, c1, c2, c3];
-            prev_hash = Poseidon_hash_4_constraints::<CS>(cs, input, statics.clone(), poseidon_params, &SboxType::Cube)?;
+            prev_hash = Poseidon_hash_4_constraints::<CS>(cs, input, statics.clone(), poseidon_params, &SboxType::Inverse)?;
 
             exp_4 = exp_4 * four;
         }
@@ -420,7 +420,7 @@ mod tests {
                 statics,
                                 &p_params).is_ok());
 
-            println!("For tree height {} and Poseidon rounds {}, no of constraints is {}", tree.depth, total_rounds, &prover.num_constraints());
+            println!("For 4-ary tree of height {} and Poseidon rounds {}, no of multipliers is {} and constraints is {}", tree.depth, total_rounds, &prover.num_multipliers(), &prover.num_constraints());
 
             let proof = prover.prove(&bp_gens).unwrap();
             let end = start.elapsed();

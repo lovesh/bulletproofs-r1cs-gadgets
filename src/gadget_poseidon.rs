@@ -165,7 +165,7 @@ impl SboxType {
         let (var_l, _) = cs.allocate_single(val_l)?;
         let (var_r, var_o) = cs.allocate_single(val_r)?;
 
-        // Ensure `inp_plus_const` is not zero
+        // Ensure `inp_plus_const` is not zero. As a side effect, `is_nonzero_gadget` also ensures that arguments passes are inverse of each other
         is_nonzero_gadget(
             cs,
             AllocatedScalar {

@@ -40,7 +40,7 @@ impl<'a> VanillaSparseMerkleTree<'a> {
         for i in 1..=depth {
             let prev = empty_tree_hashes[i-1];
             //let new = mimc(&prev, &prev, hash_constants);
-            let new = Poseidon_hash_2(prev.clone(), prev.clone(), hash_params, &SboxType::Cube);
+            let new = Poseidon_hash_2(prev.clone(), prev.clone(), hash_params, &SboxType::Inverse);
             let key = new.to_bytes();
 
             db.insert(key, (prev, prev));
@@ -74,13 +74,13 @@ impl<'a> VanillaSparseMerkleTree<'a> {
                 if cur_idx.is_lsb_set() {
                     // LSB is set, so put new value on right
                     //let h =  mimc(&side_elem, &cur_val, self.hash_constants);
-                    let h =  Poseidon_hash_2(side_elem.clone(), cur_val.clone(), self.hash_params, &SboxType::Cube);
+                    let h =  Poseidon_hash_2(side_elem.clone(), cur_val.clone(), self.hash_params, &SboxType::Inverse);
                     self.update_db_with_key_val(h, (side_elem, cur_val));
                     h
                 } else {
                     // LSB is unset, so put new value on left
                     //let h =  mimc(&cur_val, &side_elem, self.hash_constants);
-                    let h =  Poseidon_hash_2(cur_val.clone(), side_elem.clone(), self.hash_params, &SboxType::Cube);
+                    let h =  Poseidon_hash_2(cur_val.clone(), side_elem.clone(), self.hash_params, &SboxType::Inverse);
                     self.update_db_with_key_val(h, (cur_val, side_elem));
                     h
                 }
@@ -137,10 +137,10 @@ impl<'a> VanillaSparseMerkleTree<'a> {
             cur_val = {
                 if cur_idx.is_lsb_set() {
                     // mimc(&proof[self.depth-1-i], &cur_val, self.hash_constants)
-                    Poseidon_hash_2(proof[self.depth-1-i].clone(), cur_val.clone(), self.hash_params, &SboxType::Cube)
+                    Poseidon_hash_2(proof[self.depth-1-i].clone(), cur_val.clone(), self.hash_params, &SboxType::Inverse)
                 } else {
                     // mimc(&cur_val, &proof[self.depth-1-i], self.hash_constants)
-                    Poseidon_hash_2(cur_val.clone(), proof[self.depth-1-i].clone(), self.hash_params, &SboxType::Cube)
+                    Poseidon_hash_2(cur_val.clone(), proof[self.depth-1-i].clone(), self.hash_params, &SboxType::Inverse)
                 }
             };
 
@@ -198,7 +198,7 @@ pub fn vanilla_merkle_merkle_tree_verif_gadget<CS: ConstraintSystem>(
         let right = right_1 + right_2;
 
         // prev_hash = mimc_hash_2::<CS>(cs, left, right, mimc_rounds, mimc_constants)?;
-        prev_hash = Poseidon_hash_2_constraints::<CS>(cs, left, right, statics.clone(), poseidon_params, &SboxType::Cube)?;
+        prev_hash = Poseidon_hash_2_constraints::<CS>(cs, left, right, statics.clone(), poseidon_params, &SboxType::Inverse)?;
     }
 
     constrain_lc_with_scalar::<CS>(cs, prev_hash, root);
@@ -481,7 +481,7 @@ mod tests {
 
 //            println!("For tree height {} and MiMC rounds {}, no of constraints is {}", tree.depth, &MIMC_ROUNDS, &prover.num_constraints());
 
-            println!("For tree height {} and Poseidon rounds {}, no of constraints is {}", tree.depth, total_rounds, &prover.num_constraints());
+            println!("For binary tree of height {} and Poseidon rounds {}, no of multipliers is {} and constraints is {}", tree.depth, total_rounds, &prover.num_multipliers(), &prover.num_constraints());
 
             let proof = prover.prove(&bp_gens).unwrap();
             let end = start.elapsed();

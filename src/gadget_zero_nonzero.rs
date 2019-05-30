@@ -9,7 +9,7 @@ use bulletproofs::{BulletproofGens, PedersenGens};
 use curve25519_dalek::ristretto::CompressedRistretto;
 use bulletproofs::r1cs::LinearCombination;
 
-use crate::r1cs_utils::{AllocatedScalar};
+use crate::r1cs_utils::{AllocatedScalar, constrain_lc_with_scalar};
 
 /// if x == 0 then y = 0 else y = 1
 /// if x != 0 then inv = x^-1 else inv = 0
@@ -42,17 +42,15 @@ pub fn is_zero_gadget<CS: ConstraintSystem>(
     Ok(())
 }
 
-/// Enforces that x is 0.
+/// Enforces that x is 0. Takes x and the inverse of x.
 pub fn is_nonzero_gadget<CS: ConstraintSystem>(
     cs: &mut CS,
     x: AllocatedScalar,
     x_inv: AllocatedScalar,
 ) -> Result<(), R1CSError> {
-    let y: u32 = 1;
-
-    let x_lc: LinearCombination = vec![(x.variable, Scalar::one())].iter().collect();
-    let one_minus_y_lc: LinearCombination = vec![(Variable::One(), Scalar::from(1-y))].iter().collect();
-    let y_lc: LinearCombination = vec![(Variable::One(), Scalar::from(y))].iter().collect();
+    let x_lc = LinearCombination::from(x.variable);
+    let y_lc = LinearCombination::from(Scalar::one());
+    let one_minus_y_lc = LinearCombination::from(Variable::One()) - y_lc.clone();
 
     // x * (1-y) = 0
     let (_, _, o1) = cs.multiply(x_lc.clone(), one_minus_y_lc);
@@ -64,11 +62,6 @@ pub fn is_nonzero_gadget<CS: ConstraintSystem>(
     // Output wire should have value `y`
     cs.constrain(o2 - y_lc);
 
-    // Ensure x_inv is the really the inverse of x by ensuring x*x_inv = 1
-    let (_, x_inv_var, o3) = cs.multiply(x_lc, inv_lc);
-    // Output wire should be 1
-    let one_lc: LinearCombination = vec![(Variable::One(), Scalar::one())].iter().collect();
-    cs.constrain(o3 - one_lc);
     Ok(())
 }
 
