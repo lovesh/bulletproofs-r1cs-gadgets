@@ -303,7 +303,7 @@ mod tests {
         let mut tree = VanillaSparseMerkleTree::new(&constants);*/
         let width = 6;
         let (full_b, full_e) = (4, 4);
-        let partial_rounds = 6;
+        let partial_rounds = 140;
         let p_params = PoseidonParams::new(width, full_b, full_e, partial_rounds);
         let mut tree = VanillaSparseMerkleTree::new(&p_params);
 
@@ -399,7 +399,7 @@ mod tests {
 
     #[test]
     fn test_VSMT_Verif() {
-        let mut test_rng: OsRng = OsRng::new().unwrap();
+        let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
 
         // Generate the MiMC round constants
         /*let constants = (0..MIMC_ROUNDS).map(|_| Scalar::random(&mut test_rng)).collect::<Vec<_>>();
@@ -427,8 +427,6 @@ mod tests {
 
         let pc_gens = PedersenGens::default();
         let bp_gens = BulletproofGens::new(819200, 1);
-
-        let mut test_rng: StdRng = SeedableRng::from_seed([24u8; 32]);
 
         let (proof, commitments) = {
             let mut prover_transcript = Transcript::new(b"VSMT");
@@ -467,7 +465,8 @@ mod tests {
                 });
             }
 
-            let statics = allocate_statics_for_prover(&mut prover, width);
+            let num_statics = 4;
+            let statics = allocate_statics_for_prover(&mut prover, num_statics);
 
             let start = Instant::now();
             assert!(vanilla_merkle_merkle_tree_verif_gadget(
@@ -478,7 +477,7 @@ mod tests {
                 leaf_index_alloc_scalars,
                 proof_alloc_scalars,
                 statics,
-                                &p_params).is_ok());
+                &p_params).is_ok());
 
 //            println!("For tree height {} and MiMC rounds {}, no of constraints is {}", tree.depth, &MIMC_ROUNDS, &prover.num_constraints());
 
@@ -487,7 +486,7 @@ mod tests {
             let proof = prover.prove(&bp_gens).unwrap();
             let end = start.elapsed();
 
-            println!("Proving time is {:?} seconds", end);
+            println!("Proving time is {:?}", end);
 
             (proof, (com_leaf, leaf_index_comms, proof_comms))
         };
@@ -518,7 +517,8 @@ mod tests {
             });
         }
 
-        let statics = allocate_statics_for_verifier(&mut verifier, width, &pc_gens);
+        let num_statics = 4;
+        let statics = allocate_statics_for_verifier(&mut verifier, num_statics, &pc_gens);
 
         let start = Instant::now();
         assert!(vanilla_merkle_merkle_tree_verif_gadget(
@@ -534,6 +534,6 @@ mod tests {
         assert!(verifier.verify(&proof, &pc_gens, &bp_gens).is_ok());
         let end = start.elapsed();
 
-        println!("Verification time is {:?} seconds", end);
+        println!("Verification time is {:?}", end);
     }
 }

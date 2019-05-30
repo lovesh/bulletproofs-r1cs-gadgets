@@ -174,6 +174,22 @@ pub fn u64_array_to_scalar(array: &[u64; 4]) -> Scalar {
     s.reduce()
 }
 
+pub fn get_base_4_repr(scalar: &Scalar) -> [u8; 128] {
+    let mut base_4 = [0u8; 128];
+    let mut bits = get_bits(scalar).to_vec();
+
+    bits.reverse();
+    for i in (0..255).step_by(2) {
+        base_4[i / 2] = match (bits[i], bits[i+1]) {
+            (0, 0) => 0,
+            (0, 1) => 1,
+            (1, 0) => 2,
+            _ => 3
+        }
+    }
+    base_4
+}
+
 
 /// Following code for handling Hex is taken from https://play.rust-lang.org/?version=stable&mode=debug&edition=2015&gist=e241493d100ecaadac3c99f37d0f766f
 use std::num::ParseIntError;
@@ -275,6 +291,24 @@ mod tests {
             let u1 = scalar_to_u64_array(&s1);
             println!("u1={:?}", u1);
         }
+    }
+
+    #[test]
+    fn test_scalar_to_base_4_array() {
+        println!("{:?}", get_base_4_repr(&Scalar::from(18u64)).to_vec());
+        println!("{:?}", get_base_4_repr(&Scalar::from(1u64)).to_vec());
+        println!("{:?}", get_base_4_repr(&Scalar::from(0u64)).to_vec());
+        println!("{:?}", get_base_4_repr(&Scalar::from(2u64)).to_vec());
+        println!("{:?}", get_base_4_repr(&Scalar::from(3u64)).to_vec());
+        println!("{:?}", get_base_4_repr(&Scalar::from(4u64)).to_vec());
+        println!("{:?}", get_base_4_repr(&Scalar::from(5u64)).to_vec());
+        println!("{:?}", get_base_4_repr(&Scalar::from(6u64)).to_vec());
+    }
+
+    #[test]
+    fn test_invert() {
+        let x = Scalar::zero();
+        println!("Inverse {:?}", x.invert());
     }
 }
 

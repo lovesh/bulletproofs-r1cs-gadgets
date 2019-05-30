@@ -15,7 +15,8 @@ pub mod gadget_set_membership_1;
 pub mod gadget_set_non_membership;
 pub mod gadget_zero_nonzero;
 pub mod gadget_mimc;
-pub mod gadget_vsmt;
+pub mod gadget_vsmt_2;
+pub mod gadget_vsmt_4;
 pub mod gadget_osmt;    /// This is incomplete
 mod poseidon_constants;
 pub mod gadget_poseidon;

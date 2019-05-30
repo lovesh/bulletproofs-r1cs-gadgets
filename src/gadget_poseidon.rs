@@ -509,6 +509,7 @@ pub fn Poseidon_hash_4_constraints<'a, CS: ConstraintSystem>(
     params: &'a PoseidonParams,
     sbox_type: &SboxType,
 ) -> Result<LinearCombination, R1CSError> {
+
     let width = params.width;
     // Only 4 inputs to the permutation are set to the input of this hash function.
     assert_eq!(statics.len(), width-4);
@@ -660,7 +661,7 @@ mod tests {
                                                 sbox_type,
                                                 &expected_output).is_ok());
 
-            println!("For Poseidon permutation rounds {}, no of constraints is {}", total_rounds, &prover.num_constraints());
+            println!("For Poseidon permutation rounds {}, no of constraints is {}, no of multipliers is {}", total_rounds, &prover.num_constraints(), &prover.num_multipliers());
 
             let proof = prover.prove(&bp_gens).unwrap();
             (proof, comms)
@@ -739,7 +740,7 @@ mod tests {
                                            sbox_type,
                                            &expected_output).is_ok());
 
-            println!("For Poseidon hash 2:1 rounds {}, no of constraints is {}", total_rounds, &prover.num_constraints());
+            println!("For Poseidon hash 2:1 rounds {}, no of constraints is {}, no of multipliers is {}", total_rounds, &prover.num_constraints(), &prover.num_multipliers());
 
             let proof = prover.prove(&bp_gens).unwrap();
 
@@ -831,7 +832,7 @@ mod tests {
                                            sbox_type,
                                            &expected_output).is_ok());
 
-            println!("For Poseidon hash 4:1 rounds {}, no of constraints is {}", total_rounds, &prover.num_constraints());
+            println!("For Poseidon hash 4:1 rounds {}, no of constraints is {}, no of multipliers is {}", total_rounds, &prover.num_constraints(), &prover.num_multipliers());
 
             let proof = prover.prove(&bp_gens).unwrap();
 
