@@ -20,8 +20,9 @@ use crate::gadget_poseidon::{PoseidonParams, Poseidon_hash_4, Poseidon_hash_4_co
 type DBVal = [Scalar; 4];
 type ProofNode = [Scalar; 3];
 
-/// Depth of the tree.
-pub const TreeDepth: usize = 32;
+/// Depth of the tree. Has to be a multiple of 4.
+// TODO: Remove this restriction.
+pub const TreeDepth: usize = 16;
 
 /// Number of bytes to represent leaf index
 pub const LeafIndexBytes: usize = TreeDepth / 4;
@@ -432,7 +433,7 @@ mod tests {
                 statics,
                                 &p_params).is_ok());
 
-            println!("For 4-ary tree of height {} and Poseidon rounds {}, no of multipliers is {} and constraints is {}", tree.depth, total_rounds, &prover.num_multipliers(), &prover.num_constraints());
+            println!("For 4-ary tree of height {} (has 2^{} leaves) and Poseidon rounds {}, no of multipliers is {} and constraints is {}", tree.depth, tree.depth*2, total_rounds, &prover.num_multipliers(), &prover.num_constraints());
 
             let proof = prover.prove(&bp_gens).unwrap();
             let end = start.elapsed();
