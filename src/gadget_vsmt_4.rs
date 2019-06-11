@@ -12,7 +12,7 @@ use bulletproofs::{BulletproofGens, PedersenGens};
 use merlin::Transcript;
 use bulletproofs::r1cs::LinearCombination;
 
-use crate::scalar_utils::{ScalarBytes, ScalarBits, get_bits, get_base_4_repr};
+use crate::scalar_utils::{ScalarBytes, ScalarBits, get_base_4_repr};
 use crate::r1cs_utils::{AllocatedScalar, constrain_lc_with_scalar};
 use crate::gadget_poseidon::{PoseidonParams, Poseidon_hash_4, Poseidon_hash_4_constraints, Poseidon_hash_4_gadget, SboxType,
                              allocate_statics_for_prover, allocate_statics_for_verifier};
@@ -20,7 +20,11 @@ use crate::gadget_poseidon::{PoseidonParams, Poseidon_hash_4, Poseidon_hash_4_co
 type DBVal = [Scalar; 4];
 type ProofNode = [Scalar; 3];
 
-pub const TreeDepth: usize = 128;
+/// Depth of the tree.
+pub const TreeDepth: usize = 32;
+
+/// Number of bytes to represent leaf index
+pub const LeafIndexBytes: usize = TreeDepth / 4;
 
 // TODO: ABSTRACT HASH FUNCTION BETTER
 /// Sparse merkle tree with width 4, .i.e each node has 4 children.
@@ -34,6 +38,9 @@ pub struct VanillaSparseMerkleTree_4<'a> {
 
 impl<'a> VanillaSparseMerkleTree_4<'a> {
     pub fn new(hash_params: &'a PoseidonParams) -> VanillaSparseMerkleTree_4<'a> {
+        if (TreeDepth % 4) != 0 {
+            panic!("Tree depth should be a multiple of 4");
+        }
         let depth = TreeDepth;
         let mut db = HashMap::new();
         let mut empty_tree_hashes: Vec<Scalar> = vec![];
@@ -68,7 +75,7 @@ impl<'a> VanillaSparseMerkleTree_4<'a> {
         let mut sidenodes = sidenodes_wrap.unwrap();
 
         // Convert leaf index to base 4
-        let mut cur_idx = get_base_4_repr(&idx).to_vec();
+        let mut cur_idx = get_base_4_repr(&idx, LeafIndexBytes).to_vec();
         cur_idx.reverse();
         let mut cur_val = val.clone();
 
@@ -92,7 +99,7 @@ impl<'a> VanillaSparseMerkleTree_4<'a> {
 
     /// Get a value from tree, if `proof` is not None, populate `proof` with the merkle proof
     pub fn get(&self, idx: Scalar, proof: &mut Option<Vec<ProofNode>>) -> Scalar {
-        let cur_idx = get_base_4_repr(&idx).to_vec();
+        let cur_idx = get_base_4_repr(&idx, LeafIndexBytes).to_vec();
         let mut cur_node = self.root.clone();
 
         let need_proof = proof.is_some();
@@ -127,7 +134,7 @@ impl<'a> VanillaSparseMerkleTree_4<'a> {
 
     /// Verify a merkle proof, if `root` is None, use the current root else use given root
     pub fn verify_proof(&self, idx: Scalar, val: Scalar, proof: &[ProofNode], root: Option<&Scalar>) -> bool {
-        let mut cur_idx = get_base_4_repr(&idx).to_vec();
+        let mut cur_idx = get_base_4_repr(&idx, LeafIndexBytes).to_vec();
         cur_idx.reverse();
         let mut cur_val = val.clone();
 
@@ -181,8 +188,8 @@ pub fn vanilla_merkle_merkle_tree_4_verif_gadget<CS: ConstraintSystem>(
     let two = Scalar::from(2u64);
     let four = Scalar::from(4u64);
 
-    // Each field element is 32 bytes so for each byte
-    for i in 0..32 {
+    // Each leaf index can take upto LeafIndexBytes bytes so for each byte
+    for i in 0..LeafIndexBytes {
         // Decompose each byte into 4 parts of 2 bits each. For each 2 bits
         for j in 0..4 {
             // Check that both 2 bits are actually bits, .i.e. they both are 0 and 1

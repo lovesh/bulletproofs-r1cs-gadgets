@@ -174,12 +174,16 @@ pub fn u64_array_to_scalar(array: &[u64; 4]) -> Scalar {
     s.reduce()
 }
 
-pub fn get_base_4_repr(scalar: &Scalar) -> [u8; 128] {
-    let mut base_4 = [0u8; 128];
+/// Get a base 4 representation of the given `scalar`. Only process `limit_bytes` of the scalar
+pub fn get_base_4_repr(scalar: &Scalar, limit_bytes: usize) -> Vec<u8> {
+    let d = limit_bytes * 4;    // number of base 4 digits
+    let n = limit_bytes * 8;    // number of bits to process
+    let mut base_4 = vec![0u8; d];
     let mut bits = get_bits(scalar).to_vec();
-
+    // Keep only the number of bits needed.
+    bits.truncate(n);
     bits.reverse();
-    for i in (0..255).step_by(2) {
+    for i in (0..bits.len()-1).step_by(2) {
         base_4[i / 2] = match (bits[i], bits[i+1]) {
             (0, 0) => 0,
             (0, 1) => 1,
@@ -295,14 +299,14 @@ mod tests {
 
     #[test]
     fn test_scalar_to_base_4_array() {
-        println!("{:?}", get_base_4_repr(&Scalar::from(18u64)).to_vec());
-        println!("{:?}", get_base_4_repr(&Scalar::from(1u64)).to_vec());
-        println!("{:?}", get_base_4_repr(&Scalar::from(0u64)).to_vec());
-        println!("{:?}", get_base_4_repr(&Scalar::from(2u64)).to_vec());
-        println!("{:?}", get_base_4_repr(&Scalar::from(3u64)).to_vec());
-        println!("{:?}", get_base_4_repr(&Scalar::from(4u64)).to_vec());
-        println!("{:?}", get_base_4_repr(&Scalar::from(5u64)).to_vec());
-        println!("{:?}", get_base_4_repr(&Scalar::from(6u64)).to_vec());
+        println!("{:?}", get_base_4_repr(&Scalar::from(18u64), 32));
+        println!("{:?}", get_base_4_repr(&Scalar::from(1u64), 32));
+        println!("{:?}", get_base_4_repr(&Scalar::from(0u64), 32));
+        println!("{:?}", get_base_4_repr(&Scalar::from(2u64), 32));
+        println!("{:?}", get_base_4_repr(&Scalar::from(3u64), 32));
+        println!("{:?}", get_base_4_repr(&Scalar::from(4u64), 32));
+        println!("{:?}", get_base_4_repr(&Scalar::from(5u64), 32));
+        println!("{:?}", get_base_4_repr(&Scalar::from(6u64), 32));
     }
 
     #[test]
