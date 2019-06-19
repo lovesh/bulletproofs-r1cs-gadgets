@@ -164,7 +164,38 @@ impl<'a> VanillaSparseMerkleTree_4<'a> {
     }
 }
 
+/*
+    Hash all 4 children including the node on the path to leaf.
+    But the prover cannot disclose at what index the node is in the children.
+    So he expresses each child arithmetically. An example below for a single level of the tree.
 
+    Proof elements = [N1, N2, N3]
+    Hidden Node (node in path to leaf) = N
+
+    Proof elements with placeholder (_p0, _p1, _p2, _p3) where hidden node can go
+    [_p0, N1, _p1, N2, _p2, N3, _p3]
+
+    p = position of hidden node, p =(b1, b0) where b0 and b1 are bits at index 0 and 1
+    c0, c1, c2, c3 are children of one level of one subtree
+
+    [c0, c1, c2, c3]
+
+    Different arrangements of node for values of p
+    p=0 => [N, N1, N2, N3]
+    p=1 => [N1, N, N2, N3]
+    p=2 => [N1, N2, N, N3]
+    p=3 => [N1, N2, N3, N]
+
+    Arithmetic relations for c0, c1, c2 and c3
+
+    c0 = (1-b0)*(1-b1)*N + b0*N1 + (1-b0)*b1*N1
+
+    c1 = (1-b0)*(1-b1)*N1 + (1-b1)*b0*N + (1-b0)*b1*N2 + b0*b1*N2
+
+    c2 = (1-b1)*N2 + (1-b0)*b1*N + b0*b1*N3
+
+    c3 = (1-b1)*N3 + (1-b0)*b1*N3 + b1*b0*N
+*/
 pub fn vanilla_merkle_merkle_tree_4_verif_gadget<CS: ConstraintSystem>(
     cs: &mut CS,
     depth: usize,
@@ -211,39 +242,6 @@ pub fn vanilla_merkle_merkle_tree_4_verif_gadget<CS: ConstraintSystem>(
             // (2*b1 + b0)*4 = 2*4*b1 + 4*b0
             constraint_leaf_index.push((b1, two * exp_4));
             constraint_leaf_index.push((b0, exp_4));
-
-            /*
-                Hash all 4 children including the node on the path to leaf.
-                But the prover cannot disclose at what index the node is in the children.
-                So he expresses each child arithmetically. An example below for a single level of the tree.
-
-                Proof elements = [N1, N2, N3]
-                Hidden Node (node in path to leaf) = N
-
-                Proof elements with placeholder (_p0, _p1, _p2, _p3) where hidden node can go
-                [_p0, N1, _p1, N2, _p2, N3, _p3]
-
-                p = position of hidden node, p =(b1, b0) where b0 and b1 are bits at index 0 and 1
-                c0, c1, c2, c3 are children of one level of one subtree
-
-                [c0, c1, c2, c3]
-
-                Different arrangements of node for values of p
-                p=0 => [N, N1, N2, N3]
-                p=1 => [N1, N, N2, N3]
-                p=2 => [N1, N2, N, N3]
-                p=3 => [N1, N2, N3, N]
-
-                Arithmetic relations for c0, c1, c2 and c3
-
-                c0 = (1-b0)*(1-b1)*N + b0*N1 + (1-b0)*b1*N1
-
-                c1 = (1-b0)*(1-b1)*N1 + (1-b1)*b0*N + (1-b0)*b1*N2 + b0*b1*N2
-
-                c2 = (1-b1)*N2 + (1-b0)*b1*N + b0*b1*N3
-
-                c3 = (1-b1)*N3 + (1-b0)*b1*N3 + b1*b0*N
-            */
 
             let N3: LinearCombination = proof_nodes.pop().unwrap().variable.into();
             let N2: LinearCombination = proof_nodes.pop().unwrap().variable.into();
