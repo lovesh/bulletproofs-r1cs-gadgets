@@ -12,13 +12,15 @@ use bulletproofs::{BulletproofGens, PedersenGens};
 use merlin::Transcript;
 use bulletproofs::r1cs::LinearCombination;
 
-use crate::scalar_utils::{ScalarBytes, TreeDepth, ScalarBits, get_bits};
+use crate::scalar_utils::{ScalarBytes, ScalarBits, get_bits};
 use crate::r1cs_utils::{AllocatedScalar, constrain_lc_with_scalar};
 // use crate::gadget_mimc::{mimc, MIMC_ROUNDS, mimc_hash_2, mimc_gadget};
 use crate::gadget_poseidon::{PoseidonParams, Poseidon_hash_2, Poseidon_hash_2_constraints, Poseidon_hash_2_gadget, SboxType,
                              allocate_statics_for_prover, allocate_statics_for_verifier};
 
 type DBVal = (Scalar, Scalar);
+
+pub const TreeDepth: usize = 253;
 
 // TODO: ABSTRACT HASH FUNCTION BETTER
 
@@ -65,7 +67,7 @@ impl<'a> VanillaSparseMerkleTree<'a> {
         self.get(idx, &mut sidenodes_wrap);
         let mut sidenodes: Vec<Scalar> = sidenodes_wrap.unwrap();
 
-        let mut cur_idx = ScalarBits::from_scalar(&idx);
+        let mut cur_idx = ScalarBits::from_scalar(&idx, TreeDepth);
         let mut cur_val = val.clone();
 
         for i in 0..self.depth {
@@ -97,7 +99,7 @@ impl<'a> VanillaSparseMerkleTree<'a> {
 
     /// Get a value from tree, if `proof` is not None, populate `proof` with the merkle proof
     pub fn get(&self, idx: Scalar, proof: &mut Option<Vec<Scalar>>) -> Scalar {
-        let mut cur_idx = ScalarBits::from_scalar(&idx);
+        let mut cur_idx = ScalarBits::from_scalar(&idx, TreeDepth);
         let mut cur_node = self.root.clone();
 
         let need_proof = proof.is_some();
@@ -130,7 +132,7 @@ impl<'a> VanillaSparseMerkleTree<'a> {
 
     /// Verify a merkle proof, if `root` is None, use the current root else use given root
     pub fn verify_proof(&self, idx: Scalar, val: Scalar, proof: &[Scalar], root: Option<&Scalar>) -> bool {
-        let mut cur_idx = ScalarBits::from_scalar(&idx);
+        let mut cur_idx = ScalarBits::from_scalar(&idx, TreeDepth);
         let mut cur_val = val.clone();
 
         for i in 0..self.depth {
@@ -363,14 +365,14 @@ mod tests {
         }
 
         let l = BASEPOINT_ORDER;
-        println!("BASEPOINT_ORDER as bits {:?}", get_bits(&BASEPOINT_ORDER).to_vec());
+        println!("BASEPOINT_ORDER as bits {:?}", get_bits(&BASEPOINT_ORDER, TreeDepth).to_vec());
 
         let y = Scalar::from(1u32);
         let mut b1 = vec![];
         let mut b2 = vec![];
 
         let mut z1 = y.clone();
-        println!("z1 as bits {:?}", get_bits(&z1).to_vec());
+        println!("z1 as bits {:?}", get_bits(&z1, TreeDepth).to_vec());
         for i in 0..253 {
             if is_msb_set(&z1) {
                 b1.push(1)
@@ -381,7 +383,7 @@ mod tests {
         }
 
         let mut z2 = y.clone();
-        println!("z2 as bits {:?}", get_bits(&z2).to_vec());
+        println!("z2 as bits {:?}", get_bits(&z2, TreeDepth).to_vec());
         for i in 0..253 {
             if is_lsb_set(&z2) {
                 b2.insert(0, 1)
@@ -441,7 +443,7 @@ mod tests {
             let mut leaf_index_comms = vec![];
             let mut leaf_index_vars = vec![];
             let mut leaf_index_alloc_scalars = vec![];
-            for b in get_bits(&k).iter().take(tree.depth) {
+            for b in get_bits(&k, TreeDepth).iter().take(tree.depth) {
                 let val: Scalar = Scalar::from(*b as u8);
                 let (c, v) = prover.commit(val.clone(), Scalar::random(&mut test_rng));
                 leaf_index_comms.push(c);

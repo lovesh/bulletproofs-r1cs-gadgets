@@ -12,7 +12,7 @@ use bulletproofs::{BulletproofGens, PedersenGens};
 use merlin::Transcript;
 use bulletproofs::r1cs::LinearCombination;
 
-use crate::scalar_utils::{ScalarBytes, ScalarBits, get_base_4_repr};
+use crate::scalar_utils::{ScalarBytes, get_base_4_repr};
 use crate::r1cs_utils::{AllocatedScalar, constrain_lc_with_scalar};
 use crate::gadget_poseidon::{PoseidonParams, Poseidon_hash_4, Poseidon_hash_4_constraints, Poseidon_hash_4_gadget, SboxType,
                              allocate_statics_for_prover, allocate_statics_for_verifier};
@@ -165,8 +165,6 @@ impl<'a> VanillaSparseMerkleTree_4<'a> {
 }
 
 
-/// left = (1-leaf_side) * leaf + (leaf_side * proof_node)
-/// right = leaf_side * leaf + ((1-leaf_side) * proof_node))
 pub fn vanilla_merkle_merkle_tree_4_verif_gadget<CS: ConstraintSystem>(
     cs: &mut CS,
     depth: usize,
@@ -183,7 +181,7 @@ pub fn vanilla_merkle_merkle_tree_4_verif_gadget<CS: ConstraintSystem>(
 
     let statics: Vec<LinearCombination> = statics.iter().map(|s| s.variable.into()).collect();
 
-    // Initialilize  constraint_leaf_index with -leaf_index.
+    // Initialize  constraint_leaf_index with -leaf_index.
     let mut constraint_leaf_index = vec![(leaf_index.variable, -Scalar::one())];
     let mut exp_4 = Scalar::one();
     let two = Scalar::from(2u64);
