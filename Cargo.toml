@@ -22,6 +22,7 @@ clear_on_drop = "0.2"
 git = "https://github.com/lovesh/bulletproofs"
 branch = "smt"
 features = ["yoloproofs", "avx2_backend"]
+#features = ["yoloproofs"]
 
 [dev-dependencies]
 hex = "0.3"

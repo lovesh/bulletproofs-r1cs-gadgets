@@ -317,7 +317,7 @@ pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
         // Substitution (S-box) layer
         for i in 0..width {
             let round_key = params.round_keys[round_keys_offset];
-            sbox_outputs[i] = sbox_type.synthesize_sbox(cs, input_vars[i].clone(), round_key.clone())?.into();
+            sbox_outputs[i] = sbox_type.synthesize_sbox(cs, input_vars[i].clone(), round_key)?.into();
 
             round_keys_offset += 1;
         }
@@ -346,7 +346,7 @@ pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
             // apply Sbox to only 1 element of the state.
             // Here the last one is chosen but the choice is arbitrary.
             if i == width-1 {
-                sbox_outputs[i] = sbox_type.synthesize_sbox(cs, input_vars[i].clone(), round_key.clone())?.into();
+                sbox_outputs[i] = sbox_type.synthesize_sbox(cs, input_vars[i].clone(), round_key)?.into();
             } else {
                 sbox_outputs[i] = input_vars[i].clone() + LinearCombination::from(round_key);
             }
@@ -376,7 +376,7 @@ pub fn Poseidon_permutation_constraints<'a, CS: ConstraintSystem>(
         // Substitution (S-box) layer
         for i in 0..width {
             let round_key = params.round_keys[round_keys_offset];
-            sbox_outputs[i] = sbox_type.synthesize_sbox(cs, input_vars[i].clone(), round_key.clone())?.into();
+            sbox_outputs[i] = sbox_type.synthesize_sbox(cs, input_vars[i].clone(), round_key)?.into();
 
             round_keys_offset += 1;
         }
