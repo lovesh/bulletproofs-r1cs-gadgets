@@ -21,7 +21,7 @@ pub fn bound_check_gadget<CS: ConstraintSystem>(
     b: AllocatedQuantity,
     max: u64,
     min: u64,
-    n: usize
+    bit_size: usize
 ) -> Result<(), R1CSError> {
 
     // a = v - min
@@ -36,9 +36,9 @@ pub fn bound_check_gadget<CS: ConstraintSystem>(
     constrain_lc_with_scalar::<CS>(cs, a.variable + b.variable, &Scalar::from(max - min));
 
     // Constrain a in [0, 2^n)
-    assert!(positive_no_gadget(cs, a, n).is_ok());
+    assert!(positive_no_gadget(cs, a, bit_size).is_ok());
     // Constrain b in [0, 2^n)
-    assert!(positive_no_gadget(cs, b, n).is_ok());
+    assert!(positive_no_gadget(cs, b, bit_size).is_ok());
 
     Ok(())
 }
@@ -118,16 +118,11 @@ pub fn verify_proof_of_bounded_num(lower: u64, upper: u64, max_bits_in_val: usiz
 mod tests {
     use super::*;
     use merlin::Transcript;
+    use rand::rngs::OsRng;
+    use rand::Rng;
 
-    #[test]
-    fn test_bound_check_gadget() {
-        use rand::rngs::OsRng;
-        use rand::Rng;
-
+    fn bound_check(min: u64, max: u64, bit_size: usize) {
         let mut rng = rand::thread_rng();
-        let min = 10;
-        let max = 100;
-
         let v = rng.gen_range(min, max);
         println!("v is {}", &v);
         let randomness = Some(Scalar::random(&mut rng));
@@ -135,12 +130,36 @@ mod tests {
         let pc_gens = PedersenGens::default();
         let bp_gens = BulletproofGens::new(128, 1);
 
-        // TODO: Use correct bit size of the field
-        let n = 32;
-
         let label = b"BoundsTest";
-        let (proof, commitments) = gen_proof_of_bounded_num(v, randomness, min, max, n, &mut rng, label, &pc_gens, &bp_gens).unwrap();
+        let (proof, commitments) = gen_proof_of_bounded_num(v, randomness, min, max, bit_size, &mut rng, label, &pc_gens, &bp_gens).unwrap();
 
-        verify_proof_of_bounded_num(min, max, n, proof, commitments, label, &pc_gens, &bp_gens).unwrap();
+        verify_proof_of_bounded_num(min, max, bit_size, proof, commitments, label, &pc_gens, &bp_gens).unwrap();
+    }
+
+    #[test]
+    fn test_bound_check_gadget_small_value() {
+        let min = 10;
+        let max = 100;
+
+        // Since max fits in 7 bits
+        let bit_size = 7;
+
+        bound_check(min, max, bit_size)
+    }
+
+    #[test]
+    fn test_bound_check_gadget_large_value() {
+        let min = std::u64::MAX/100001;
+        let max = std::u64::MAX/100000;
+
+        // Since max fits in 47 bits
+        let bit_size = 47;
+
+        bound_check(min, max, bit_size);
+
+        // check once more with a new minimum
+        let min = std::u64::MAX/100009;
+
+        bound_check(min, max, bit_size);
     }
 }

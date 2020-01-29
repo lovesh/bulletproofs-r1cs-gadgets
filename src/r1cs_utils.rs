@@ -20,11 +20,10 @@ pub struct AllocatedScalar {
 pub fn positive_no_gadget<CS: ConstraintSystem>(
     cs: &mut CS,
     v: AllocatedQuantity,
-    n: usize
-    ,) -> Result<(), R1CSError> {
+    bit_size: usize) -> Result<(), R1CSError> {
     let mut constraint_v = vec![(v.variable, -Scalar::one())];
     let mut exp_2 = Scalar::one();
-    for i in 0..n {
+    for i in 0..bit_size {
         // Create low-level variables and add them to constraints
 
         let (a, b, o) = cs.allocate_multiplier(v.assignment.map(|q| {
