@@ -100,9 +100,9 @@ impl PositiveNoGadget {
     Ok(())
 }*/
 
-fn count_log_bits(number: u64) -> usize {
-    let logaritm_int = cmp::min((number as f64).log2() as usize + 1, 64 as usize);
-    return logaritm_int as usize
+fn count_bits(number: u64) -> usize {
+    let used_bits = 64 - number.leading_zeros();
+    return used_bits as usize
 }
 
 #[cfg(test)]
@@ -128,7 +128,7 @@ mod tests {
         let pc_gens = PedersenGens::default();
         let bp_gens = BulletproofGens::new(128, 1);
 
-        let n = count_log_bits(max);
+        let n = count_bits(max);
         println!("bit_size is {}", &n);
 
         let a = v - min;

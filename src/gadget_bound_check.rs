@@ -115,9 +115,9 @@ pub fn verify_proof_of_bounded_num(lower: u64, upper: u64, max_bits_in_val: usiz
     verifier.verify(&proof, &pc_gens, &bp_gens)
 }
 
-fn count_log_bits(number: u64) -> usize {
-    let logaritm_int = cmp::min((number as f64).log2() as usize + 1, 64 as usize);
-    return logaritm_int as usize
+fn count_bits(number: u64) -> usize {
+    let used_bits = 64 - number.leading_zeros();
+    return used_bits as usize
 }
 
 #[cfg(test)]
@@ -147,7 +147,7 @@ mod tests {
         let min = 10;
         let max = 100;
 
-        let bit_size = count_log_bits(max);
+        let bit_size = count_bits(max);
         println!("bit_size is {}", &bit_size);
 
         bound_check(min, max, bit_size)
@@ -158,7 +158,7 @@ mod tests {
         let min = std::u64::MAX/100001;
         let max = std::u64::MAX/100000;
 
-        let bit_size = count_log_bits(max);
+        let bit_size = count_bits(max);
         println!("bit_size is {}", &bit_size);
 
         bound_check(min, max, bit_size);
