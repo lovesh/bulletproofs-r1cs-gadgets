@@ -10,6 +10,7 @@ use curve25519_dalek::ristretto::CompressedRistretto;
 use bulletproofs::r1cs::LinearCombination;
 use merlin::Transcript;
 use rand::{RngCore, CryptoRng};
+use std::cmp;
 
 use crate::r1cs_utils::{AllocatedQuantity, positive_no_gadget, constrain_lc_with_scalar};
 
@@ -114,6 +115,11 @@ pub fn verify_proof_of_bounded_num(lower: u64, upper: u64, max_bits_in_val: usiz
     verifier.verify(&proof, &pc_gens, &bp_gens)
 }
 
+fn count_bits(number: u64) -> usize {
+    let used_bits = 64 - number.leading_zeros();
+    return used_bits as usize
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,8 +147,8 @@ mod tests {
         let min = 10;
         let max = 100;
 
-        // Since max fits in 7 bits
-        let bit_size = 7;
+        let bit_size = count_bits(max);
+        println!("bit_size is {}", &bit_size);
 
         bound_check(min, max, bit_size)
     }
@@ -152,8 +158,8 @@ mod tests {
         let min = std::u64::MAX/100001;
         let max = std::u64::MAX/100000;
 
-        // Since max fits in 47 bits
-        let bit_size = 47;
+        let bit_size = count_bits(max);
+        println!("bit_size is {}", &bit_size);
 
         bound_check(min, max, bit_size);
 
@@ -162,4 +168,5 @@ mod tests {
 
         bound_check(min, max, bit_size);
     }
+
 }
