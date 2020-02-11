@@ -8,6 +8,7 @@ use curve25519_dalek::scalar::Scalar;
 use bulletproofs::{BulletproofGens, PedersenGens};
 use curve25519_dalek::ristretto::CompressedRistretto;
 use bulletproofs::r1cs::LinearCombination;
+use std::cmp;
 
 use crate::r1cs_utils::{AllocatedQuantity, positive_no_gadget, constrain_lc_with_scalar};
 
@@ -99,6 +100,11 @@ impl PositiveNoGadget {
     Ok(())
 }*/
 
+fn count_log_bits(number: u64) -> usize {
+    let logaritm_int = cmp::min((number as f64).log2() as usize + 1, 64 as usize);
+    return logaritm_int as usize
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,8 +128,8 @@ mod tests {
         let pc_gens = PedersenGens::default();
         let bp_gens = BulletproofGens::new(128, 1);
 
-        // TODO: Use correct bit size of the field
-        let n = 32;
+        let n = count_log_bits(max);
+        println!("bit_size is {}", &n);
 
         let a = v - min;
         let b = max - v;
