@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn test_vanilla_sparse_merkle_tree_4() {
-        let mut test_rng: OsRng = OsRng::new().unwrap();;
+        let mut test_rng: OsRng = OsRng::default();
 
         let width = 6;
         let (full_b, full_e) = (4, 4);
