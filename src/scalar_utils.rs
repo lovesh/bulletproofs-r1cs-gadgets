@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_shl_shr() {
-        let mut csprng: OsRng = OsRng::new().unwrap();
+        let mut csprng: OsRng = OsRng::default();
         for _ in 0..100 {
             let r: Scalar = Scalar::random(&mut csprng);
             let mut b_arr = ScalarBits::from_scalar(&r, TreeDepth);

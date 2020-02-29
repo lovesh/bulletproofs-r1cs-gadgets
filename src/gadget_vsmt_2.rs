@@ -221,7 +221,7 @@ mod tests {
 
     #[test]
     fn test_vanilla_sparse_merkle_tree() {
-        let mut test_rng: OsRng = OsRng::new().unwrap();;
+        let mut test_rng: OsRng = OsRng::default();
 
         // Generate the MiMC round constants
         /*let constants = (0..MIMC_ROUNDS).map(|_| Scalar::random(&mut test_rng)).collect::<Vec<_>>();

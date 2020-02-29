@@ -115,7 +115,7 @@ mod tests {
         use rand::rngs::OsRng;
         use rand::Rng;
 
-        let mut rng = OsRng::new().unwrap();
+        let mut rng: OsRng = OsRng::default();
         let min = 10;
         let max = 100;
 
