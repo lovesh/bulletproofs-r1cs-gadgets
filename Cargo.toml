@@ -20,9 +20,9 @@ clear_on_drop = { version = "0.2", default-features = false, features = ["nightl
 failure = "0.1"
 
 [dependencies.bulletproofs]
-path = "../bulletproofs"
-#git = "https://github.com/lovesh/bulletproofs"
-#branch = "smt"
+#path = "../bulletproofs"
+git = "https://github.com/lovesh/bulletproofs"
+branch = "smt"
 features = ["std", "avx2_backend", "yoloproofs"]
 
 [dev-dependencies]

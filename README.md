@@ -22,4 +22,6 @@ to return the number of constraints and multipliers respectively and addition of
 3. `simplify`: to simplify a linear combination, eg. simplify a linear combination like `2*x + 3*y + 4*x` to `6*x + 3*y`.    
 
 Use the nightly compiler to run tests like   
-`cargo +nightly test --all-features`
+`cargo +nightly test --all-features`  
+OR in release mode to run faster   
+`cargo +nightly test --release --all-features`
