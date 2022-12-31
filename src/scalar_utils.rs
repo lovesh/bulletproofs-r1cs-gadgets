@@ -233,6 +233,8 @@ pub fn get_scalar_from_hex(hex_str: &str) -> Result<Scalar, DecodeHexError> {
     let bytes = decode_hex(hex_str)?;
     let mut result: [u8; 32] = [0; 32];
     result.copy_from_slice(&bytes);
+    // `Scalar` expects byte ordering as little endian
+    result.reverse();
     Ok(Scalar::from_bytes_mod_order(result))
 }
 
